@@ -24,6 +24,7 @@
 #include "base/quasi_atomic.h"
 #include "base/stl_util.h"
 #include "base/systrace.h"
+#include "base/time_utils.h"
 #include "class_root-inl.h"
 #include "debugger.h"
 #include "gc/accounting/atomic_stack.h"
@@ -209,6 +210,7 @@ ConcurrentCopying::~ConcurrentCopying() {
 }
 
 void ConcurrentCopying::RunPhases() {
+  LOG(INFO) << "[ICT-Profile] (" << heap_->cc_index_ << ") Step into RunPhases";
   CHECK(kUseBakerReadBarrier || kUseTableLookupReadBarrier);
   CHECK(!is_active_);
   is_active_ = true;
@@ -236,7 +238,12 @@ void ConcurrentCopying::RunPhases() {
   FlipThreadRoots();
   {
     ReaderMutexLock mu(self, *Locks::mutator_lock_);
+    LOG(INFO) << "[ICT-Profile] (" << heap_->cc_index_ << ") Step into CopyingPhase";
+    uint64_t start_time = MicroTime();
     CopyingPhase();
+    uint64_t duration = MicroTime() - start_time;
+    // uint32_t tid = self->GetThreadId();
+    LOG(INFO) << "[ICT-Profile] (" << heap_->cc_index_ << ") CopyingPhase: " << duration << "us";
   }
   // Verify no from space refs. This causes a pause.
   if (kEnableNoFromSpaceRefsVerification) {
@@ -260,6 +267,7 @@ void ConcurrentCopying::RunPhases() {
   CHECK(is_active_);
   is_active_ = false;
   thread_running_gc_ = nullptr;
+  LOG(INFO) << "[ICT-Profile] (" << heap_->cc_index_++ << ") RunPhases finished";
 }
 
 class ConcurrentCopying::ActivateReadBarrierEntrypointsCheckpoint : public Closure {
@@ -1609,16 +1617,25 @@ void ConcurrentCopying::CopyingPhase() {
     // objects, aside from weak ref accesses with read barriers (Reference::GetReferent() and
     // system weaks) that may happen concurrently while we are processing the mark stack and newly
     // mark/gray objects and push refs on the mark stack.
+
+    // [ICT-Profile] ProcessMarkStack(thread-local)
+    uint64_t start_time = MicroTime();
     ProcessMarkStack();
+    uint64_t duration = MicroTime() - start_time;
+    LOG(INFO) << "[ICT-Profile] ProcessMarkStack(thread-local): " << duration << "us";
 
     ReferenceProcessor* rp = GetHeap()->GetReferenceProcessor();
     bool clear_soft_references = GetCurrentIteration()->GetClearSoftReferences();
     rp->Setup(self, this, /*concurrent=*/ true, clear_soft_references);
+
+    // [ICT-Profile] ForwardSoftReferences
+    start_time = MicroTime();
     if (!clear_soft_references) {
       // Forward as many SoftReferences as possible before inhibiting reference access.
       rp->ForwardSoftReferences(GetTimings());
     }
-
+    duration = MicroTime() - start_time;
+    LOG(INFO) << "[ICT-Profile] ForwardSoftReferences: " << duration << "us";
     // We transition through three mark stack modes (thread-local, shared, GC-exclusive). The
     // primary reasons are that we need to use a checkpoint to process thread-local mark
     // stacks, but after we disable weak refs accesses, we can't use a checkpoint due to a deadlock
@@ -1640,7 +1657,12 @@ void ConcurrentCopying::CopyingPhase() {
     // a weak-ref (after participating in the checkpoint), and another mutator indefinitely waits
     // for the mutex before it participates in the checkpoint. Consequently, the gc-thread blocks
     // forever as the checkpoint never finishes (See runtime/mutator_gc_coord.md).
+
+    // [ICT-Profile] SwitchToSharedMarkStackMode
+    start_time = MicroTime();
     SwitchToSharedMarkStackMode();
+    duration = MicroTime() - start_time;
+    LOG(INFO) << "[ICT-Profile] SwitchToSharedMarkStackMode: " << duration << "us";
     CHECK(!self->GetWeakRefAccessEnabled());
 
     // Now that weak refs accesses are disabled, once we exhaust the shared mark stack again here
@@ -1648,12 +1670,23 @@ void ConcurrentCopying::CopyingPhase() {
     // SwitchToSharedMarkStackMode() call), we won't have new refs to process, that is, mutators
     // (via read barriers) have no way to produce any more refs to process. Marking converges once
     // before we process weak refs below.
+    
+    // [ICT-Profile] ProcessMarkStack(shared)
+    start_time = MicroTime();
     ProcessMarkStack();
+    duration = MicroTime() - start_time;
+    LOG(INFO) << "[ICT-Profile] ProcessMarkStack(shared): " << duration << "us";
     CheckEmptyMarkStack();
 
     // Switch to the GC exclusive mark stack mode so that we can process the mark stack without a
     // lock from this point on.
+
+    // [ICT-Profile] SwitchToGcExclusiveMarkStackMode
+    start_time = MicroTime();
     SwitchToGcExclusiveMarkStackMode();
+    duration = MicroTime() - start_time;
+    LOG(INFO) << "[ICT-Profile] SwitchToGcExclusiveMarkStackMode: " << duration << "us";
+
     CheckEmptyMarkStack();
     if (kVerboseMode) {
       LOG(INFO) << "ProcessReferences";
@@ -1662,16 +1695,33 @@ void ConcurrentCopying::CopyingPhase() {
     // reference processing is "disabled", some accesses will proceed once we've ensured that
     // objects directly reachable by the mutator are marked, i.e. before we mark through
     // finalizers.
+
+    // [ICT-Profile] ProcessReferences
+    // start_time = MicroTime();
     ProcessReferences(self);
+    // duration = MicroTime() - start_time;
+    // LOG(INFO) << "[ICT-Profile] ProcessReferences: " << duration << "us";
     CheckEmptyMarkStack();
+
     // JNI WeakGlobalRefs and most other system weaks cannot be processed until we're done marking
     // through finalizers, since such references to finalizer-reachable objects must be preserved.
     if (kVerboseMode) {
       LOG(INFO) << "SweepSystemWeaks";
     }
+
+    // [ICT-Profile] SweepSystemWeaks
+    // start_time = MicroTime();
     SweepSystemWeaks(self);
+    // duration = MicroTime() - start_time;
+    // LOG(INFO) << "[ICT-Profile] SweepSystemWeaks: " << duration << "us";
     CheckEmptyMarkStack();
+
+    // [ICT-Profile] ReenableWeakRefAccess
+    start_time = MicroTime();
     ReenableWeakRefAccess(self);
+    duration = MicroTime() - start_time;
+    LOG(INFO) << "[ICT-Profile] ReenableWeakRefAccess: " << duration << "us";
+
     if (kVerboseMode) {
       LOG(INFO) << "SweepSystemWeaks done";
     }

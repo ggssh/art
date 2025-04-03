@@ -23,6 +23,7 @@
 #include "immune_spaces.h"
 #include "offsets.h"
 
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <unordered_map>

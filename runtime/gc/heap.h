@@ -19,6 +19,7 @@
 
 #include <android-base/logging.h>
 
+#include <cstddef>
 #include <iosfwd>
 #include <string>
 #include <unordered_set>
@@ -133,6 +134,7 @@ static constexpr bool kUseThreadLocalAllocationStack = false;
 
 class Heap {
  public:
+  size_t cc_index_;
   // How much we grow the TLAB if we can do it.
   static constexpr size_t kPartialTlabSize = 16 * KB;
   static constexpr bool kUsePartialTlabs = true;

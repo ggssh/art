@@ -434,7 +434,7 @@ Heap::Heap(size_t initial_size,
   if (VLOG_IS_ON(heap) || VLOG_IS_ON(startup)) {
     LOG(INFO) << "Heap() entering";
   }
-
+  cc_index_ = 0;
   LOG(INFO) << "Using " << foreground_collector_type_ << " GC.";
   if (gUseUserfaultfd) {
     CHECK_EQ(foreground_collector_type_, kCollectorTypeCMC);

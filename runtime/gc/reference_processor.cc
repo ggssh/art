@@ -15,6 +15,8 @@
  */
 
 #include "reference_processor.h"
+#include <cstdint>
+#include <memory>
 
 #include "art_field-inl.h"
 #include "base/mutex.h"
@@ -201,6 +203,10 @@ void ReferenceProcessor::Setup(Thread* self,
 // We advance rp_state_ to signal partial completion for the benefit of GetReferent.
 void ReferenceProcessor::ProcessReferences(Thread* self, TimingLogger* timings) {
   TimingLogger::ScopedTiming t(concurrent_ ? __FUNCTION__ : "(Paused)ProcessReferences", timings);
+
+  uint64_t total_start_time = MicroTime();
+  // [ICT-Profile] ForwardSoftReferences(in ProcessReferences)
+  uint64_t start_time = MicroTime();
   if (!clear_soft_references_) {
     // Forward any additional SoftReferences we discovered late, now that reference access has been
     // inhibited.
@@ -208,6 +214,11 @@ void ReferenceProcessor::ProcessReferences(Thread* self, TimingLogger* timings) 
       ForwardSoftReferences(timings);
     }
   }
+  uint64_t duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] ForwardSoftReferences(in ProcessReferences): " << duration << "us";
+
+  // [ICT-Profile] SetInitMarkingDone
+  start_time = MicroTime();
   {
     MutexLock mu(self, *Locks::reference_processor_lock_);
     if (!gUseReadBarrier) {
@@ -220,6 +231,9 @@ void ReferenceProcessor::ProcessReferences(Thread* self, TimingLogger* timings) 
     rp_state_ = RpState::kInitMarkingDone;
     condition_.Broadcast(self);
   }
+  duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] SetInitMarkingDone: " << duration << "us";
+
   if (kIsDebugBuild && collector_->IsTransactionActive()) {
     // In transaction mode, we shouldn't enqueue any Reference to the queues.
     // See DelayReferenceReferent().
@@ -230,8 +244,20 @@ void ReferenceProcessor::ProcessReferences(Thread* self, TimingLogger* timings) 
   }
   // Clear all remaining soft and weak references with white referents.
   // This misses references only reachable through finalizers.
+  // [ICT-Profile] ClearSoftWhiteReferences(without final)
+  start_time = MicroTime();
   soft_reference_queue_.ClearWhiteReferences(&cleared_references_, collector_);
+  duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] ClearSoftWhiteReferences(without final): " << duration << "us";
+  
+  // [ICT-Profile] ClearWeakWhiteReferences(without final)
+  start_time = MicroTime();
   weak_reference_queue_.ClearWhiteReferences(&cleared_references_, collector_);
+  duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] ClearWeakWhiteReferences(without final): " << duration << "us";
+
+  // [ICT-Profile] SetInitClearingDone
+  start_time = MicroTime();
   // Defer PhantomReference processing until we've finished marking through finalizers.
   {
     // TODO: Capture mark state of some system weaks here. If the referent was marked here,
@@ -247,6 +273,11 @@ void ReferenceProcessor::ProcessReferences(Thread* self, TimingLogger* timings) 
     // But many kinds of references, including all java.lang.ref ones, are handled normally from
     // here on. See GetReferent().
   }
+  duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] SetInitClearingDone: " << duration << "us";
+
+  // [ICT-Profile] PreserveObjWithFinalizer
+  start_time = MicroTime();
   {
     TimingLogger::ScopedTiming t2(
         concurrent_ ? "EnqueueFinalizerReferences" : "(Paused)EnqueueFinalizerReferences", timings);
@@ -265,6 +296,8 @@ void ReferenceProcessor::ProcessReferences(Thread* self, TimingLogger* timings) 
       collector_->ProcessMarkStack();
     }
   }
+  duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] PreserveObjWithFinalizer: " << duration << "us";
 
   // Process all soft and weak references with white referents, where the references are reachable
   // only from finalizers. It is unclear that there is any way to do this without slightly
@@ -285,13 +318,27 @@ void ReferenceProcessor::ProcessReferences(Thread* self, TimingLogger* timings) 
   // finalized object containing pointers to native objects that have already been deallocated.
   // But it can be argued that this is just an instance of the broader rule that it is not safe
   // for finalizers to access otherwise inaccessible finalizable objects.
+  
+  // [ICT-Profile] ClearSoftWhiteReferences(only final)
+  start_time = MicroTime();
   soft_reference_queue_.ClearWhiteReferences(&cleared_references_, collector_,
                                              /*report_cleared=*/ true);
+  duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] ClearSoftWhiteReferences(only final): " << duration <<"us";
+  
+  // [ICT-Profile] ClearWeakWhiteReferences(only final)
+  start_time = MicroTime();
   weak_reference_queue_.ClearWhiteReferences(&cleared_references_, collector_,
                                              /*report_cleared=*/ true);
+  duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] ClearWeakWhiteReferences(only final): " << duration << "us";
 
   // Clear all phantom references with white referents. It's fine to do this just once here.
+  // [ICT-Profile] ClearPhantomWhiteReferences
+  start_time = MicroTime();
   phantom_reference_queue_.ClearWhiteReferences(&cleared_references_, collector_);
+  duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] ClearPhantomWhiteReferences: " << duration << "us";
 
   // At this point all reference queues other than the cleared references should be empty.
   DCHECK(soft_reference_queue_.IsEmpty());
@@ -310,6 +357,9 @@ void ReferenceProcessor::ProcessReferences(Thread* self, TimingLogger* timings) 
       DisableSlowPath(self);
     }
   }
+
+  uint64_t total_duration = MicroTime() - total_start_time;
+  LOG(INFO) << "[ICT-Profile] ProcessReferences: " << total_duration << "us";
 }
 
 // Process the "referent" field in a java.lang.ref.Reference.  If the referent has not yet been

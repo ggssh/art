@@ -16,8 +16,10 @@
 
 #include "runtime.h"
 
+#include <cstdint>
 #include <optional>
 #include <utility>
+#include "base/time_utils.h"
 
 #ifdef __linux__
 #include <sys/prctl.h>
@@ -884,16 +886,39 @@ void Runtime::CallExitHook(jint status) {
 }
 
 void Runtime::SweepSystemWeaks(IsMarkedVisitor* visitor) {
+  uint64_t total_start_time = MicroTime();
   // Userfaultfd compaction updates weak intern-table page-by-page via
   // LinearAlloc.
+  // [ICT-Profile] SweepInternTableWeaks
+  uint64_t start_time = MicroTime();
   if (!GetHeap()->IsPerformingUffdCompaction()) {
     GetInternTable()->SweepInternTableWeaks(visitor);
   }
+  uint64_t duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] SweepInternTableWeaks: " << duration << "us";
+
+  // [ICT-Profile] SweepMonitorList
+  start_time = MicroTime();
   GetMonitorList()->SweepMonitorList(visitor);
+  duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] SweepMonitorList: " << duration << "us";
+
+  // [ICT-Profile] SweepJniWeakGlobals
+  start_time = MicroTime();
   GetJavaVM()->SweepJniWeakGlobals(visitor);
+  duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] SweepJniWeakGlobals: " << duration << "us";
+
+  // [ICT-Profile] SweepAllocationRecords
+  start_time = MicroTime();
   GetHeap()->SweepAllocationRecords(visitor);
+  duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] SweepAllocationRecords: " << duration << "us";
   // Sweep JIT tables only if the GC is moving as in other cases the entries are
   // not updated.
+
+  // [ICT-Profile] SweepRootTables
+  start_time = MicroTime();
   if (GetJit() != nullptr && GetHeap()->IsMovingGc()) {
     // Visit JIT literal tables. Objects in these tables are classes and strings
     // and only classes can be affected by class unloading. The strings always
@@ -902,11 +927,20 @@ void Runtime::SweepSystemWeaks(IsMarkedVisitor* visitor) {
     // from mutators. See b/32167580.
     GetJit()->GetCodeCache()->SweepRootTables(visitor);
   }
+  duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] SweepRootTables: " << duration << "us";
 
+  // [ICT-Profile] SweepOtherGenericHolders
+  start_time = MicroTime();
   // All other generic system-weak holders.
   for (gc::AbstractSystemWeakHolder* holder : system_weak_holders_) {
     holder->Sweep(visitor);
   }
+  duration = MicroTime() - start_time;
+  LOG(INFO) << "[ICT-Profile] SweepOtherGenericHolders: " << duration << "us";
+
+  uint64_t total_duration = MicroTime() - total_start_time;
+  LOG(INFO) << "[ICT-Profile] SweepSystemWeaks: " << total_duration << "us";
 }
 
 bool Runtime::ParseOptions(const RuntimeOptions& raw_options,
