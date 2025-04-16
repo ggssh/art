@@ -32,6 +32,14 @@ inline MirrorType* GcRoot<MirrorType>::Read(GcRootSource* gc_root_source) const 
   return down_cast<MirrorType*>(
       ReadBarrier::BarrierForRoot<mirror::Object, kReadBarrierOption>(&root_, gc_root_source));
 }
+// shengkai
+// add weak global get path
+template<class MirrorType>
+template<ReadBarrierOption kReadBarrierOption>
+inline MirrorType* GcRoot<MirrorType>::ReadWeak(GcRootSource* gc_root_source) const {
+  return down_cast<MirrorType*>(
+      ReadBarrier::BarrierForRootWeak<mirror::Object, kReadBarrierOption>(&root_, gc_root_source));
+}
 
 template<class MirrorType>
 inline GcRoot<MirrorType>::GcRoot(mirror::CompressedReference<mirror::Object> ref)

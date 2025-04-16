@@ -873,7 +873,7 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobal(Thread* self, IndirectRef ref
   // if MayAccessWeakGlobals is false.
   DCHECK_EQ(IndirectReferenceTable::GetIndirectRefKind(ref), kWeakGlobal);
   if (LIKELY(MayAccessWeakGlobals(self))) {
-    return weak_globals_.Get(ref);
+    return weak_globals_.GetWeak(ref);
   }
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
   return DecodeWeakGlobalLocked(self, ref);
@@ -887,13 +887,24 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectR
   // TODO: Otherwise we should just wait for kInitMarkingDone, and track which weak globals were
   // marked at that point. We would only need one mark bit per entry in the weak_globals_ table,
   // and a quick pass over that early on during reference processing.
-  WaitForWeakGlobalsAccess(self);
-  return weak_globals_.Get(ref);
+
+  // shengkai don't need WaitForWeakGlobalsAccess(self);
+  // forbit graying obj during weak access disabled in barrier
+  // always followed by IsWeakGlobalCleared, just return referent should also be OK
+
+  ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
+  if (LIKELY(MayAccessWeakGlobals(self)) || referent->GetMarkBit() != 0) {
+    return referent;
+  }else{
+    return nullptr;
+  }
+  // Caution! .Get(ref) would gray obj during mark!
+  // return weak_globals_.Get(ref);
 }
 
 ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalAsStrong(IndirectRef ref) {
   // The target is known to be alive. Simple `Get()` with read barrier is enough.
-  return weak_globals_.Get(ref);
+  return weak_globals_.GetWeak(ref);
 }
 
 ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalDuringShutdown(Thread* self, IndirectRef ref) {
@@ -906,18 +917,29 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalDuringShutdown(Thread* self, I
   if (!gUseReadBarrier) {
     DCHECK(allow_accessing_weak_globals_.load(std::memory_order_seq_cst));
   }
-  return weak_globals_.Get(ref);
+  return weak_globals_.GetWeak(ref);
 }
 
 bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
   DCHECK_EQ(IndirectReferenceTable::GetIndirectRefKind(ref), kWeakGlobal);
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
-  WaitForWeakGlobalsAccess(self);
   // When just checking a weak ref has been cleared, avoid triggering the read barrier in decode
   // (DecodeWeakGlobal) so that we won't accidentally mark the object alive. Since the cleared
   // sentinel is a non-moving object, we can compare the ref to it without the read barrier and
   // decide if it's cleared.
-  return Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.Get<kWithoutReadBarrier>(ref));
+
+  // shengkai don't need WaitForWeakGlobalsAccess(self); if hold lock
+  // not during weak access disable
+  //   return IsClearedJniWeakGlobal
+  // during weak access disable
+  //   return IsClearedJniWeakGlobal || unmarked
+  ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
+  if (Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.GetWeak<kWithoutReadBarrier>(ref)) || referent->GetMarkBit() == 0) {
+    return true;
+  }else{
+    return false;
+  }
+  // return Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.Get<kWithoutReadBarrier>(ref));
 }
 
 void JavaVMExt::UpdateWeakGlobal(Thread* self, IndirectRef ref, ObjPtr<mirror::Object> result) {
