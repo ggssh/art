@@ -99,7 +99,8 @@ ObjPtr<mirror::Object> ReferenceProcessor::GetReferent(Thread* self,
   // scenario where it becomes non-null during the reference processing phase.
   // A read barrier may be unsafe here, and we use the result only when it's null or marked.
   ObjPtr<mirror::Object> referent = reference->template GetReferent<kWithoutReadBarrier>();
-  if (referent.IsNull()) {
+  // shengkai
+  if (referent.IsNull() || referent->GetMarkBit() != 0) {
     return referent;
   }
 
