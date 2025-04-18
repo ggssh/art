@@ -219,8 +219,24 @@ inline MirrorType* ReadBarrier::BarrierForRootWeak(mirror::CompressedReference<M
       Thread* self = Thread::Current();
       // shengkai
       // caution not gray obj during weak access disabled
-      if (self != nullptr && self->GetIsGcMarking() && self->GetWeakRefAccessEnabled()) {
-        ref = reinterpret_cast<MirrorType*>(Mark(ref));
+      // if (self != nullptr && self->GetIsGcMarking() && self->GetWeakRefAccessEnabled()) {
+      //   ref = reinterpret_cast<MirrorType*>(Mark(ref));
+      // } else if (self != nullptr && self->GetIsGcMarking() && !self->GetWeakRefAccessEnabled()) {
+      //   // 1. SweepJniWeakGlobals may move object to to-space -> return to space ptr
+      //   // 2. the ref may have been forwarded -> return FwdPtr
+      //   mirror::Object* forwarded_ref = Runtime::Current()->GetHeap()->ConcurrentCopyingCollector()->IsMarked(ref);
+      //   ref = reinterpret_cast<MirrorType*>(forwarded_ref);
+      // }
+      if (self != nullptr && self->GetIsGcMarking()) {
+        const bool weak_ref_enabled = self->GetWeakRefAccessEnabled();
+        if (weak_ref_enabled) {
+          ref = reinterpret_cast<MirrorType*>(Mark(ref));
+        } else {
+          // 1. SweepJniWeakGlobals may move object to to-space -> return to space ptr
+          // 2. the ref may have been forwarded -> return FwdPtr
+          mirror::Object* forwarded_ref = Runtime::Current()->GetHeap()->ConcurrentCopyingCollector()->IsMarked(ref);
+          ref = reinterpret_cast<MirrorType*>(forwarded_ref);
+        }
       }
       AssertToSpaceInvariant(gc_root_source, ref);
       return ref;

@@ -894,11 +894,11 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectR
   // forbit graying obj during weak access disabled in barrier
   // always followed by IsWeakGlobalCleared, just return referent should also be OK
 
-  ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
-  if (referent == nullptr) {
-    return referent;
-  }
-  WaitForWeakGlobalsAccess(self);
+  // ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
+  // if (referent == nullptr) {
+  //   return referent;
+  // }
+  // WaitForWeakGlobalsAccess(self);
   // if WeakRefAccessEnabled = true
   // return referent
   // if WeakRefAccessEnabled = false
@@ -947,6 +947,7 @@ bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
   //   return IsClearedJniWeakGlobal
   // during weak access disable
   //   return IsClearedJniWeakGlobal || unmarked
+  
   // ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
   // if (Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.GetWeak<kWithoutReadBarrier>(ref)) || (gUseReadBarrier && !MayAccessWeakGlobals(self) && referent != nullptr && referent->GetMarkBit() == 0)) {
   //   return true;
