@@ -936,7 +936,7 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalDuringShutdown(Thread* self, I
 bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
   DCHECK_EQ(IndirectReferenceTable::GetIndirectRefKind(ref), kWeakGlobal);
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
-  WaitForWeakGlobalsAccess(self);
+  // WaitForWeakGlobalsAccess(self);
   // When just checking a weak ref has been cleared, avoid triggering the read barrier in decode
   // (DecodeWeakGlobal) so that we won't accidentally mark the object alive. Since the cleared
   // sentinel is a non-moving object, we can compare the ref to it without the read barrier and
@@ -948,13 +948,18 @@ bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
   // during weak access disable
   //   return IsClearedJniWeakGlobal || unmarked
   
-  // ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
-  // if (Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.GetWeak<kWithoutReadBarrier>(ref)) || (gUseReadBarrier && !MayAccessWeakGlobals(self) && referent != nullptr && referent->GetMarkBit() == 0)) {
-  //   return true;
-  // } else {
-  //   return false;
-  // }
-  return Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.Get<kWithoutReadBarrier>(ref));
+  ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
+  bool result = false;
+
+  if (Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.GetWeak<kWithoutReadBarrier>(ref)) || (gUseReadBarrier && !MayAccessWeakGlobals(self) && referent != nullptr && referent->GetMarkBit() == 0)) {
+    // return true;
+    result = true;
+  } else {
+    // return false;
+    result = false;
+  }
+  // return Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.Get<kWithoutReadBarrier>(ref));
+  return result;
 }
 
 void JavaVMExt::UpdateWeakGlobal(Thread* self, IndirectRef ref, ObjPtr<mirror::Object> result) {
