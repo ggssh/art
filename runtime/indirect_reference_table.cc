@@ -338,6 +338,7 @@ void IndirectReferenceTable::VisitRoots(RootVisitor* visitor, const RootInfo& ro
 void IndirectReferenceTable::SweepJniWeakGlobals(IsMarkedVisitor* visitor) {
   CHECK_EQ(kind_, kWeakGlobal);
   MutexLock mu(Thread::Current(), *Locks::jni_weak_globals_lock_);
+  ATraceBegin("SweepJniWeakGlobals : jni_weak_globals_lock_");
   Runtime* const runtime = Runtime::Current();
   for (size_t i = 0, capacity = Capacity(); i != capacity; ++i) {
     GcRoot<mirror::Object>* entry = table_[i].GetReference();
@@ -351,6 +352,7 @@ void IndirectReferenceTable::SweepJniWeakGlobals(IsMarkedVisitor* visitor) {
       *entry = GcRoot<mirror::Object>(new_obj);
     }
   }
+  ATraceEnd();
 }
 
 void IndirectReferenceTable::Dump(std::ostream& os) const {

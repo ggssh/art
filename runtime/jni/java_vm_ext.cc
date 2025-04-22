@@ -17,6 +17,7 @@
 #include "java_vm_ext-inl.h"
 
 #include <dlfcn.h>
+#include <unistd.h>
 #include <cstddef>
 #include <string_view>
 
@@ -754,6 +755,7 @@ jweak JavaVMExt::AddWeakGlobalRef(Thread* self, ObjPtr<mirror::Object> obj) {
   // CMS needs this to block for concurrent reference processing because an object allocated during
   // the GC won't be marked and concurrent reference processing would incorrectly clear the JNI weak
   // ref. But CC (gUseReadBarrier == true) doesn't because of the to-space invariant.
+  ATraceBegin("AddWeakGlobalRef : jni_weak_globals_lock_");
   if (!gUseReadBarrier) {
     WaitForWeakGlobalsAccess(self);
   }
@@ -764,6 +766,7 @@ jweak JavaVMExt::AddWeakGlobalRef(Thread* self, ObjPtr<mirror::Object> obj) {
     LOG(FATAL) << error_msg;
     UNREACHABLE();
   }
+  ATraceEnd();
   return reinterpret_cast<jweak>(ref);
 }
 
@@ -787,11 +790,13 @@ void JavaVMExt::DeleteWeakGlobalRef(Thread* self, jweak obj) {
     return;
   }
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
+  ATraceBegin("DeleteWeakGlobalRef : jni_weak_globals_lock_");
   if (!weak_globals_.Remove(obj)) {
     LOG(WARNING) << "JNI WARNING: DeleteWeakGlobalRef(" << obj << ") "
                  << "failed to find entry";
   }
   MaybeTraceWeakGlobals();
+  ATraceEnd();
 }
 
 static void ThreadEnableCheckJni(Thread* thread, void* arg) {
@@ -832,6 +837,7 @@ void JavaVMExt::DumpForSigQuit(std::ostream& os) {
   }
 }
 
+// Not called
 void JavaVMExt::DisallowNewWeakGlobals() {
   CHECK(!gUseReadBarrier);
   Thread* const self = Thread::Current();
@@ -843,6 +849,7 @@ void JavaVMExt::DisallowNewWeakGlobals() {
   allow_accessing_weak_globals_.store(false, std::memory_order_seq_cst);
 }
 
+// Not called
 void JavaVMExt::AllowNewWeakGlobals() {
   CHECK(!gUseReadBarrier);
   Thread* self = Thread::Current();
@@ -854,7 +861,9 @@ void JavaVMExt::AllowNewWeakGlobals() {
 void JavaVMExt::BroadcastForNewWeakGlobals() {
   Thread* self = Thread::Current();
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
+  ATraceBegin("BroadcastForNewWeakGlobals : jni_weak_globals_lock_");
   weak_globals_add_condition_.Broadcast(self);
+  ATraceEnd();
 }
 
 ObjPtr<mirror::Object> JavaVMExt::DecodeGlobal(IndirectRef ref) {
@@ -878,7 +887,11 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobal(Thread* self, IndirectRef ref
     return weak_globals_.Get(ref);
   }
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
-  return DecodeWeakGlobalLocked(self, ref);
+  ATraceBegin("DecodeWeakGlobal : jni_weak_globals_lock_");
+  ObjPtr<mirror::Object> result = DecodeWeakGlobalLocked(self, ref);
+  ATraceEnd();
+  // return DecodeWeakGlobalLocked(self, ref);
+  return result;
 }
 
 ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectRef ref) {
@@ -936,7 +949,8 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalDuringShutdown(Thread* self, I
 bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
   DCHECK_EQ(IndirectReferenceTable::GetIndirectRefKind(ref), kWeakGlobal);
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
-  WaitForWeakGlobalsAccess(self);
+  ATraceBegin("IsWeakGlobalCleared : jni_weak_globals_lock_");
+  // WaitForWeakGlobalsAccess(self);
   // When just checking a weak ref has been cleared, avoid triggering the read barrier in decode
   // (DecodeWeakGlobal) so that we won't accidentally mark the object alive. Since the cleared
   // sentinel is a non-moving object, we can compare the ref to it without the read barrier and
@@ -948,18 +962,26 @@ bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
   // during weak access disable
   //   return IsClearedJniWeakGlobal || unmarked
   
-  // ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
-  // if (Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.GetWeak<kWithoutReadBarrier>(ref)) || (gUseReadBarrier && !MayAccessWeakGlobals(self) && referent != nullptr && referent->GetMarkBit() == 0)) {
-  //   return true;
-  // } else {
-  //   return false;
-  // }
-  return Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.Get<kWithoutReadBarrier>(ref));
+  ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
+  bool result = false;
+  if (Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.GetWeak<kWithoutReadBarrier>(ref)) || (gUseReadBarrier && !MayAccessWeakGlobals(self) && referent != nullptr && referent->GetMarkBit() == 0)) {
+    // return true;
+    result = true;
+  } else {
+    // return false;
+    result = false;
+  }
+  // bool result = Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.Get<kWithoutReadBarrier>(ref));
+  ATraceEnd();
+  // return Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.Get<kWithoutReadBarrier>(ref));
+  return result;
 }
 
 void JavaVMExt::UpdateWeakGlobal(Thread* self, IndirectRef ref, ObjPtr<mirror::Object> result) {
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
+  ATraceBegin("UpdateWeakGlobal : jni_weak_globals_lock_");
   weak_globals_.Update(ref, result);
+  ATraceEnd();
 }
 
 void JavaVMExt::DumpReferenceTables(std::ostream& os) {
