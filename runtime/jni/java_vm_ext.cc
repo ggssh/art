@@ -871,21 +871,22 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobal(Thread* self, IndirectRef ref
   // This only applies in the case where MayAccessWeakGlobals goes from false to true. In the other
   // case, it may be racy, this is benign since DecodeWeakGlobalLocked does the correct behavior
   // if MayAccessWeakGlobals is false.
-  ATraceBegin("JavaVMExt::DecodeWeakGlobal");
+  // ATraceBegin("JavaVMExt::DecodeWeakGlobal");
   DCHECK_EQ(IndirectReferenceTable::GetIndirectRefKind(ref), kWeakGlobal);
   if (LIKELY(MayAccessWeakGlobals(self))) {
     return weak_globals_.Get(ref);
   }
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
 
-  ObjPtr<mirror::Object> result = DecodeWeakGlobalLocked(self, ref);
-  // return DecodeWeakGlobalLocked(self, ref);
-  ATraceEnd();
+  // ObjPtr<mirror::Object> result = DecodeWeakGlobalLocked(self, ref);
+  return DecodeWeakGlobalLocked(self, ref);
+  // ATraceEnd();
 
-  return result;
+  // return result;
 }
 
 ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectRef ref) {
+  ATraceBegin("JavaVMExt::DecodeWeakGlobalLocked");
   if (kDebugLocking) {
     Locks::jni_weak_globals_lock_->AssertHeld(self);
   }
@@ -894,7 +895,10 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectR
   // marked at that point. We would only need one mark bit per entry in the weak_globals_ table,
   // and a quick pass over that early on during reference processing.
   WaitForWeakGlobalsAccess(self);
-  return weak_globals_.Get(ref);
+  ObjPtr<mirror::Object> result = weak_globals_.Get(ref);
+  // return weak_globals_.Get(ref);
+  ATraceEnd();
+  return result;
 }
 
 ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalAsStrong(IndirectRef ref) {
