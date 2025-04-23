@@ -873,20 +873,21 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobal(Thread* self, IndirectRef ref
   // This only applies in the case where MayAccessWeakGlobals goes from false to true. In the other
   // case, it may be racy, this is benign since DecodeWeakGlobalLocked does the correct behavior
   // if MayAccessWeakGlobals is false.
-  ATraceBegin("JavaVMExt::DecodeWeakGlobal");
+  // ATraceBegin("JavaVMExt::DecodeWeakGlobal");
   DCHECK_EQ(IndirectReferenceTable::GetIndirectRefKind(ref), kWeakGlobal);
   if (LIKELY(MayAccessWeakGlobals(self))) {
     return weak_globals_.Get(ref);
   }
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
-  ObjPtr<mirror::Object> result = DecodeWeakGlobalLocked(self, ref);
-  // return DecodeWeakGlobalLocked(self, ref);
-  ATraceEnd();
+  // ObjPtr<mirror::Object> result = DecodeWeakGlobalLocked(self, ref);
+  return DecodeWeakGlobalLocked(self, ref);
+  // ATraceEnd();
 
-  return result;
+  // return result;
 }
 
 ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectRef ref) {
+  ATraceBegin("JavaVMExt::DecodeWeakGlobalLocked");
   if (kDebugLocking) {
     Locks::jni_weak_globals_lock_->AssertHeld(self);
   }
@@ -917,7 +918,11 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectR
   //   return nullptr;
   // }
   // Caution! .Get(ref) would gray obj during mark!
-  return weak_globals_.GetWeak(ref);
+  ObjPtr<mirror::Object> result = weak_globals_.GetWeak(ref);
+  ATraceEnd();
+
+  return result;
+  // return weak_globals_.GetWeak(ref);
 }
 
 ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalAsStrong(IndirectRef ref) {
