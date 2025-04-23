@@ -873,12 +873,17 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobal(Thread* self, IndirectRef ref
   // This only applies in the case where MayAccessWeakGlobals goes from false to true. In the other
   // case, it may be racy, this is benign since DecodeWeakGlobalLocked does the correct behavior
   // if MayAccessWeakGlobals is false.
+  ATraceBegin("JavaVMExt::DecodeWeakGlobal");
   DCHECK_EQ(IndirectReferenceTable::GetIndirectRefKind(ref), kWeakGlobal);
   if (LIKELY(MayAccessWeakGlobals(self))) {
     return weak_globals_.Get(ref);
   }
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
-  return DecodeWeakGlobalLocked(self, ref);
+  ObjPtr<mirror::Object> result = DecodeWeakGlobalLocked(self, ref);
+  // return DecodeWeakGlobalLocked(self, ref);
+  ATraceEnd();
+
+  return result;
 }
 
 ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectRef ref) {
@@ -934,6 +939,7 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalDuringShutdown(Thread* self, I
 }
 
 bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
+  ATraceBegin("JavaVMExt::IsWeakGlobalCleared");
   DCHECK_EQ(IndirectReferenceTable::GetIndirectRefKind(ref), kWeakGlobal);
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
   // WaitForWeakGlobalsAccess(self);
@@ -959,6 +965,7 @@ bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
     result = false;
   }
   // return Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.Get<kWithoutReadBarrier>(ref));
+  ATraceEnd();
   return result;
 }
 
