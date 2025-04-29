@@ -959,10 +959,12 @@ bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
   // during weak access disable
   //   return IsClearedJniWeakGlobal || unmarked
   
-  ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
+  // ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
+  ObjPtr<mirror::Object> referent = weak_globals_.GetWeak<kWithoutReadBarrier>(ref);
   bool result = false;
 
-  if (Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.GetWeak<kWithoutReadBarrier>(ref)) || (gUseReadBarrier && !MayAccessWeakGlobals(self) && referent != nullptr && referent->GetMarkBit() == 0)) {
+  // if (Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.GetWeak<kWithoutReadBarrier>(ref)) || (gUseReadBarrier && !MayAccessWeakGlobals(self) && referent != nullptr && referent->GetMarkBit() == 0)) {
+  if (Runtime::Current()->IsClearedJniWeakGlobal(referent) || weak_globals_.GetWeak(ref) == nullptr) {
     // return true;
     result = true;
   } else {
