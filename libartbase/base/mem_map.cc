@@ -264,6 +264,7 @@ void* MemMap::TryMemMapLow4GB(void* ptr,
                                     int flags,
                                     int fd,
                                     off_t offset) {
+  // LOG(INFO) << "Step into TryMemMapLow4GB";
   void* actual = TargetMMap(ptr, page_aligned_byte_count, prot, flags, fd, offset);
   if (actual != MAP_FAILED) {
     // Since we didn't use MAP_FIXED the kernel may have mapped it somewhere not in the low
@@ -362,7 +363,8 @@ MemMap MemMap::MapAnonymous(const char* name,
 
   if (actual == MAP_FAILED) {
     if (error_msg != nullptr) {
-      PrintFileToLog("/proc/self/maps", LogSeverity::WARNING);
+      LOG(INFO) << "MemMap::MapAnonymous failed";
+      PrintFileToLog("/proc/self/maps", LogSeverity::FATAL);
       *error_msg = StringPrintf("Failed anonymous mmap(%p, %zd, 0x%x, 0x%x, %d, 0): %s. "
                                     "See process maps in the log.",
                                 addr,
@@ -1161,7 +1163,7 @@ void* MemMap::MapInternalArtLow4GBAllocator(size_t length,
   }
 
   if (actual == MAP_FAILED) {
-    LOG(ERROR) << "Could not find contiguous low-memory space.";
+    LOG(INFO) << "Could not find contiguous low-memory space.";
     errno = ENOMEM;
   }
   return actual;
@@ -1213,6 +1215,7 @@ void* MemMap::MapInternal(void* addr,
     actual = MapInternalArtLow4GBAllocator(length, prot_non_exec, flags, fd, offset);
 
     if (actual == MAP_FAILED) {
+      LOG(INFO) << "[1] MapInternalArtLow4GBAllocator failed";
       return MAP_FAILED;
     }
 
@@ -1222,6 +1225,7 @@ void* MemMap::MapInternal(void* addr,
         PLOG(ERROR) << "Could not protect to requested prot: " << orig_prot;
         TargetMUnmap(actual, length);
         errno = ENOMEM;
+        LOG(INFO) << "[2] MapInternalArtLow4GBAllocator failed";
         return MAP_FAILED;
       }
     }
@@ -1229,6 +1233,7 @@ void* MemMap::MapInternal(void* addr,
   }
 
   actual = TargetMMap(addr, length, prot, flags, fd, offset);
+  LOG(INFO) << "[3] MapInternalArtLow4GBAllocator failed";
 #else
 #if defined(__LP64__)
   if (low_4gb && addr == nullptr) {

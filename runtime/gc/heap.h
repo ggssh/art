@@ -1752,6 +1752,8 @@ class Heap {
   // The number of times we initiated a GC of last resort to try to avoid an OOME.
   Atomic<uint64_t> pre_oome_gc_count_;
 
+  size_t expand_capacity_;
+
   // An installed allocation listener.
   Atomic<AllocationListener*> alloc_listener_;
   // An installed GC Pause listener.

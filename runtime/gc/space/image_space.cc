@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <random>
@@ -123,7 +124,8 @@ static int32_t ChooseRelocationOffsetDelta(int32_t min_delta, int32_t max_delta)
 }
 
 static int32_t ChooseRelocationOffsetDelta() {
-  return ChooseRelocationOffsetDelta(ART_BASE_ADDRESS_MIN_DELTA, ART_BASE_ADDRESS_MAX_DELTA);
+  // return ChooseRelocationOffsetDelta(ART_BASE_ADDRESS_MIN_DELTA, ART_BASE_ADDRESS_MAX_DELTA);
+  return 0 * ChooseRelocationOffsetDelta(ART_BASE_ADDRESS_MIN_DELTA, ART_BASE_ADDRESS_MAX_DELTA);
 }
 
 static bool FindImageFilenameImpl(const char* image_location,
@@ -2312,6 +2314,9 @@ class ImageSpace::BootImageLoader {
     // Reserve address space. If relocating, choose a random address for ALSR.
     uint8_t* addr = reinterpret_cast<uint8_t*>(
         relocate_ ? ART_BASE_ADDRESS + ChooseRelocationOffsetDelta() : base_address);
+    if (Runtime::Current()->IsZygote()) {
+      addr = reinterpret_cast<uint8_t*>(Heap::kPreferredAllocSpaceBegin);
+    }
     MemMap image_reservation =
         ReserveBootImageMemory(addr, image_reservation_size + extra_reservation_size, error_msg);
     if (!image_reservation.IsValid()) {

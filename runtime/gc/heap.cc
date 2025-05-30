@@ -34,6 +34,7 @@
 #include "base/arena_allocator.h"
 #include "base/dumpable.h"
 #include "base/file_utils.h"
+#include "base/globals.h"
 #include "base/histogram-inl.h"
 #include "base/logging.h"  // For VLOG.
 #include "base/memory_tool.h"
@@ -471,6 +472,18 @@ Heap::Heap(size_t initial_size,
       background_collector_type_ = foreground_collector_type_;
     }
   }
+
+  // yizhe: increase heap size
+  if (is_zygote) {
+    // expand_capacity_ = 512 * MB;
+    expand_capacity_ = (1126-512) * MB;
+    capacity_ += expand_capacity_;
+  }
+  
+#if USE_ART_LOW_4G_ALLOCATOR
+  LOG(INFO) << "Use ArtLow4GBAllocator";
+#endif
+  LOG(ERROR) << "capacity_: " << capacity_;
   ChangeCollector(desired_collector_type_);
   live_bitmap_.reset(new accounting::HeapBitmap(this));
   mark_bitmap_.reset(new accounting::HeapBitmap(this));
@@ -533,6 +546,9 @@ Heap::Heap(size_t initial_size,
     uint32_t boot_images_end =
         PointerToLowMemUInt32(boot_image_spaces_.back()->GetImageHeader().GetOatFileEnd());
     boot_images_size_ = boot_images_end - boot_images_start_address_;
+    if(is_zygote) {
+      // LOG(FATAL) << "boot_images_size: " << boot_images_size_;
+    }
     if (kIsDebugBuild) {
       VerifyBootImagesContiguity(boot_image_spaces_);
     }
@@ -550,6 +566,7 @@ Heap::Heap(size_t initial_size,
     }
   }
 
+  LOG(ERROR) << "(before non_moving_space_mem_map) request_begin: " << static_cast<const void*>(request_begin);
   /*
   requested_alloc_space_begin ->     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
                                      +-  nonmoving space (non_moving_space_capacity)+-
@@ -591,7 +608,11 @@ Heap::Heap(size_t initial_size,
     request_begin = non_moving_space_mem_map.Begin() == kPreferredAllocSpaceBegin
                         ? non_moving_space_mem_map.End()
                         : kPreferredAllocSpaceBegin;
+    if(is_zygote) {
+      request_begin = non_moving_space_mem_map.End();
+    }
   }
+  LOG(ERROR) << "(before 2 mem maps) request_begin: " << static_cast<const void*>(request_begin);
   // Attempt to create 2 mem maps at or after the requested begin.
   if (foreground_collector_type_ != kCollectorTypeCC) {
     ScopedTrace trace2("Create main mem map");
@@ -609,6 +630,8 @@ Heap::Heap(size_t initial_size,
           capacity_,
           PROT_READ | PROT_WRITE,
           /* low_4gb= */ true,
+          // yizhe
+          // false,
           /* reuse= */ false,
           heap_reservation.IsValid() ? &heap_reservation : nullptr,
           &error_str);
@@ -829,6 +852,30 @@ Heap::Heap(size_t initial_size,
       }
     }
   }
+
+  if (is_zygote) {
+    LOG(ERROR) << "Continuous Spaces";
+    for (const auto& space : continuous_spaces_) {
+      if (space != nullptr) {
+        LOG(ERROR) << "[YYZ] Space Name: " << space->GetName()
+                << ", Begin: " << static_cast<const void*>(space->Begin())
+                << ", End: " << static_cast<const void*>(space->End())
+                << ", Limit: " << static_cast<const void*>(space->Limit())
+                << ", Size: " << PrettySize(space->Size())
+                << ", Capacity: " << PrettySize(space->Capacity());
+      }
+    }
+
+    if (large_object_space_ != nullptr) {
+      LOG(ERROR) << "[YYZ] Large Object Space, Begin: "
+              << static_cast<const void*>(large_object_space_->Begin())
+              << ", End: " << static_cast<const void*>(large_object_space_->End())
+              << ", Capacity: " << PrettySize(large_object_space_->Size());
+    }
+    // LOG(FATAL) << "Print Continuous Spaces";
+  }
+  LOG(ERROR) << "Heap exiting";
+
   if (!GetBootImageSpaces().empty() && non_moving_space_ != nullptr &&
       (is_zygote || separate_non_moving_space)) {
     // Check that there's no gap between the image space and the non moving space so that the
@@ -879,6 +926,8 @@ MemMap Heap::MapAnonymousPreferredAddress(const char* name,
                                       capacity,
                                       PROT_READ | PROT_WRITE,
                                       /*low_4gb=*/ true,
+                                      // yizhe
+                                      // false,
                                       /*reuse=*/ false,
                                       /*reservation=*/ nullptr,
                                       out_error_str);

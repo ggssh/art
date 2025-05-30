@@ -61,6 +61,8 @@ MemMap RegionSpace::CreateMemMap(const std::string& name,
                                    capacity + kRegionSize,
                                    PROT_READ | PROT_WRITE,
                                    /*low_4gb=*/ true,
+                                   // yizhe
+                                   // false,
                                    /*reuse=*/ false,
                                    /*reservation=*/ nullptr,
                                    &error_msg);
