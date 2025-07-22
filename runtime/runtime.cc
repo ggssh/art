@@ -884,6 +884,9 @@ void Runtime::CallExitHook(jint status) {
 }
 
 void Runtime::SweepSystemWeaks(IsMarkedVisitor* visitor) {
+  // yizhe: Collect JNI weak globals information before sweeping
+  LOG(INFO) << "[YYZ-DEBUG] Before SweepSystemWeaks";
+  CollectJniWeakGlobalsInfo(visitor);
   // Userfaultfd compaction updates weak intern-table page-by-page via
   // LinearAlloc.
   if (!GetHeap()->IsPerformingUffdCompaction()) {
@@ -907,6 +910,10 @@ void Runtime::SweepSystemWeaks(IsMarkedVisitor* visitor) {
   for (gc::AbstractSystemWeakHolder* holder : system_weak_holders_) {
     holder->Sweep(visitor);
   }
+}
+
+void Runtime::CollectJniWeakGlobalsInfo(IsMarkedVisitor* visitor) {
+  GetJavaVM()->CollectJniWeakGlobalsInfo(visitor);
 }
 
 bool Runtime::ParseOptions(const RuntimeOptions& raw_options,

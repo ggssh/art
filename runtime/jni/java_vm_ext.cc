@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "android-base/logging.h"
 #include "gc/collector_type.h"
 #include "java_vm_ext-inl.h"
 
@@ -928,7 +929,19 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectR
   if (heap->CurrentCollectorType() == gc::kCollectorTypeCC) {
     WaitForWeakGlobalsProcessPrepare(self);
     // Caution! .Get(ref) would gray obj during mark!
-    return weak_globals_.GetWeak(ref);
+    ObjPtr<mirror::Object> obj = weak_globals_.GetWeak(ref);
+    if (obj == nullptr) {
+      // return nullptr;
+      // LOG(INFO) << "[YYZ-DEBUG] DecodeWeakGlobalLocked: obj is nullptr";
+      weak_globals_.IncrementNullValueNum();
+      ATraceIntegerValue("DecodeWeakGlobalLocked is Null", weak_globals_.NullValueNum());
+    } else {
+      // LOG(INFO) << "[YYZ-DEBUG] DecodeWeakGlobalLocked: obj is not nullptr";
+      weak_globals_.IncrementNotNullValueNum();
+      ATraceIntegerValue("DecodeWeakGlobalLocked is Not Null", weak_globals_.NotNullValueNum());
+    }
+    return obj;
+    // return weak_globals_.GetWeak(ref);
   } else {
     WaitForWeakGlobalsAccess(self);
     return weak_globals_.Get(ref);

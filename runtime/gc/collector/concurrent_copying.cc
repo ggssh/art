@@ -2490,6 +2490,12 @@ void ConcurrentCopying::SweepSystemWeaks(Thread* self) {
   Runtime::Current()->SweepSystemWeaks(this);
 }
 
+void ConcurrentCopying::CollectJniWeakGlobalsInfo(Thread* self) {
+  TimingLogger::ScopedTiming split("CollectJniWeakGlobalsInfo", GetTimings());
+  ReaderMutexLock mu(self, *Locks::heap_bitmap_lock_);
+  Runtime::Current()->CollectJniWeakGlobalsInfo(this);
+}
+
 void ConcurrentCopying::Sweep(bool swap_bitmaps) {
   if (use_generational_cc_ && young_gen_) {
     // Only sweep objects on the live stack.

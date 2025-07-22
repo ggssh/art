@@ -247,6 +247,9 @@ void ReferenceProcessor::ProcessReferences(Thread* self, TimingLogger* timings) 
     // But many kinds of references, including all java.lang.ref ones, are handled normally from
     // here on. See GetReferent().
   }
+  // yizhe: Collect JNI weak globals information before finalizer processing
+  LOG(INFO) << "[YYZ-DEBUG] Before EnqueueFinalizerReferences";
+  Runtime::Current()->CollectJniWeakGlobalsInfo(collector_);
   {
     TimingLogger::ScopedTiming t2(
         concurrent_ ? "EnqueueFinalizerReferences" : "(Paused)EnqueueFinalizerReferences", timings);

@@ -209,6 +209,22 @@ class IndirectReferenceTable {
     return top_index_ - current_num_holes_;
   }
 
+  void IncrementNullValueNum() {
+    null_value_num_++;
+  }
+
+  void IncrementNotNullValueNum() {
+    not_null_value_num_++;
+  }
+
+  int32_t NullValueNum() {
+    return null_value_num_;
+  }
+
+  int32_t NotNullValueNum() {
+    return not_null_value_num_;
+  }
+
   // We'll only state here how much is trivially free, without recovering holes.
   // Thus this is a conservative estimate.
   size_t FreeCapacity() const;
@@ -258,6 +274,9 @@ class IndirectReferenceTable {
       REQUIRES_SHARED(Locks::mutator_lock_);
 
   EXPORT void SweepJniWeakGlobals(IsMarkedVisitor* visitor) REQUIRES_SHARED(Locks::mutator_lock_)
+      REQUIRES(!Locks::jni_weak_globals_lock_);
+
+  EXPORT void CollectJniWeakGlobalsInfo(IsMarkedVisitor* visitor) REQUIRES_SHARED(Locks::mutator_lock_)
       REQUIRES(!Locks::jni_weak_globals_lock_);
 
  private:
@@ -333,6 +352,10 @@ class IndirectReferenceTable {
   // Description of the algorithm is in the .cc file.
   // TODO: Consider other data structures for compact tables, e.g., free lists.
   size_t current_num_holes_;  // Number of holes in the current / top segment.
+
+  size_t null_value_num_;
+
+  size_t not_null_value_num_;
 };
 
 }  // namespace art

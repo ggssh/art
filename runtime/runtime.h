@@ -488,6 +488,9 @@ class Runtime {
   // system weak is updated to be the visitor's returned value.
   EXPORT void SweepSystemWeaks(IsMarkedVisitor* visitor) REQUIRES_SHARED(Locks::mutator_lock_);
 
+  EXPORT void CollectJniWeakGlobalsInfo(IsMarkedVisitor* visitor)
+      REQUIRES_SHARED(Locks::mutator_lock_);
+
   // Walk all reflective objects and visit their targets as well as any method/fields held by the
   // runtime threads that are marked as being reflective.
   EXPORT void VisitReflectiveTargets(ReflectiveValueVisitor* visitor)

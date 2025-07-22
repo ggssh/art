@@ -254,6 +254,8 @@ class ConcurrentCopying : public GarbageCollector {
       REQUIRES_SHARED(Locks::mutator_lock_);
   void SweepSystemWeaks(Thread* self)
       REQUIRES_SHARED(Locks::mutator_lock_) REQUIRES(!Locks::heap_bitmap_lock_);
+  void CollectJniWeakGlobalsInfo(Thread* self)
+      REQUIRES_SHARED(Locks::mutator_lock_) REQUIRES(!Locks::heap_bitmap_lock_);
   // Sweep unmarked objects to complete the garbage collection. Full GCs sweep
   // all allocation spaces (except the region space). Sticky-bit GCs just sweep
   // a subset of the heap.

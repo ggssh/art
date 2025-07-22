@@ -173,6 +173,12 @@ class JavaVMExt : public JavaVM {
     weak_globals_.SweepJniWeakGlobals(visitor);
   }
 
+  void CollectJniWeakGlobalsInfo(IsMarkedVisitor* visitor)
+      REQUIRES_SHARED(Locks::mutator_lock_)
+      REQUIRES(!Locks::jni_weak_globals_lock_) {
+    weak_globals_.CollectJniWeakGlobalsInfo(visitor);
+  }
+
   ObjPtr<mirror::Object> DecodeGlobal(IndirectRef ref)
       REQUIRES_SHARED(Locks::mutator_lock_);
 

@@ -85,7 +85,9 @@ IndirectReferenceTable::IndirectReferenceTable(IndirectRefKind kind)
       kind_(kind),
       top_index_(0u),
       max_entries_(0u),
-      current_num_holes_(0) {
+      current_num_holes_(0),
+      null_value_num_(0),
+      not_null_value_num_(0) {
   CHECK_NE(kind, kJniTransition);
   CHECK_NE(kind, kLocal);
 }
@@ -351,6 +353,37 @@ void IndirectReferenceTable::SweepJniWeakGlobals(IsMarkedVisitor* visitor) {
       *entry = GcRoot<mirror::Object>(new_obj);
     }
   }
+}
+
+// yizhe: todo
+void IndirectReferenceTable::CollectJniWeakGlobalsInfo(IsMarkedVisitor* visitor) {
+  CHECK_EQ(kind_, kWeakGlobal);
+  MutexLock mu(Thread::Current(), *Locks::jni_weak_globals_lock_);
+  Runtime* const runtime = Runtime::Current();
+  int marked_num = 0;
+  int not_marked_num = 0;
+  int entry_is_null_num = 0;
+  for (size_t i = 0, capacity = Capacity(); i != capacity; ++i) {
+    GcRoot<mirror::Object>* entry = table_[i].GetReference();
+    // Need to skip null here to distinguish between null entries and cleared weak ref entries.
+    if (!entry->IsNull()) {
+      mirror::Object* obj = entry->Read<kWithoutReadBarrier>();
+      mirror::Object* new_obj = visitor->IsMarked(obj);
+      if (new_obj == nullptr) {
+        // new_obj = runtime->GetClearedJniWeakGlobal();
+        not_marked_num++;
+      } else {
+        marked_num++;
+      }
+      // *entry = GcRoot<mirror::Object>(new_obj);
+    } else {
+      entry_is_null_num++;
+    }
+  }
+  LOG(INFO) << "[YYZ-DEBUG] CollectJniWeakGlobalsInfo: marked_num=" << marked_num
+            << " not_marked_num=" << not_marked_num
+            << " entry_is_null_num=" << entry_is_null_num
+            << " capacity=" << Capacity();
 }
 
 void IndirectReferenceTable::Dump(std::ostream& os) const {
