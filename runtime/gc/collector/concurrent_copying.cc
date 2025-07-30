@@ -1650,6 +1650,7 @@ void ConcurrentCopying::CopyingPhase() {
     // don't need lock
     Runtime* runtime = Runtime::Current();
     runtime->DisallowCCNewSystemWeaks();
+    runtime->DisallowCCWeakGlobalsAccessForFinalizer();
 
     SwitchToSharedMarkStackMode();
     CHECK(!self->GetWeakRefAccessEnabled());
@@ -1669,10 +1670,6 @@ void ConcurrentCopying::CopyingPhase() {
     if (kVerboseMode) {
       LOG(INFO) << "ProcessReferences";
     }
-    // shengkai todo
-    // 1. keep CHECK(!self->GetWeakRefAccessEnabled());
-    // 2. reenable concurrent weak ref access
-    runtime->AllowCCNewSystemWeaks();
 
     // Process weak references. This also marks through finalizers. Although
     // reference processing is "disabled", some accesses will proceed once we've ensured that
@@ -1688,6 +1685,7 @@ void ConcurrentCopying::CopyingPhase() {
     SweepSystemWeaks(self);
     CheckEmptyMarkStack();
     ReenableWeakRefAccess(self);
+    Runtime::Current()->ResetMarkState(false);
     if (kVerboseMode) {
       LOG(INFO) << "SweepSystemWeaks done";
     }
