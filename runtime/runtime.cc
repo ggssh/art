@@ -2835,12 +2835,16 @@ void Runtime::AllowCCWeakGlobalsAccessForFinalizer() {
 
 void Runtime::UpdateMarkState() {
   CHECK(gUseReadBarrier);
+  ATraceBegin("UpdateMarkState");
   java_vm_->UpdateMarkState();
+  ATraceEnd();
 }
 
 void Runtime::ResetMarkState(bool value) {
   CHECK(gUseReadBarrier);
+  ATraceBegin("ResetMarkState");
   java_vm_->ResetMarkState(value);
+  ATraceEnd();
 }
 
 void Runtime::BroadcastForNewSystemWeaks(bool broadcast_for_checkpoint) {

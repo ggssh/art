@@ -957,12 +957,15 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectR
   // disable weak ref access when cc clearing mark stack
   gc::Heap* heap = Runtime::Current()->GetHeap();
   if (heap->CurrentCollectorType() == gc::kCollectorTypeCC) {
+    ATraceBegin("DecodeWeakGlobalLocked");
     WaitForWeakGlobalsProcessPrepare(self);
     if (!weak_globals_.GetMarkState(ref)) {
       WaitForFinalizerProcess(self);
     }
     // Caution! .Get(ref) would gray obj during mark!
-    return weak_globals_.GetWeak(ref);
+    ObjPtr<mirror::Object> res = weak_globals_.GetWeak(ref);
+    ATraceEnd();
+    return res;
   } else {
     WaitForWeakGlobalsAccess(self);
     return weak_globals_.Get(ref);
@@ -1008,11 +1011,13 @@ bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
 
   gc::Heap* heap = Runtime::Current()->GetHeap();
   if (heap->CurrentCollectorType() == gc::kCollectorTypeCC) {
+    ATraceBegin("IsWeakGlobalCleared");
     WaitForWeakGlobalsProcessPrepare(self);
     if (!weak_globals_.GetMarkState(ref)) {
       WaitForFinalizerProcess(self);
     }
     ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
+    ATraceEnd();
     if (Runtime::Current()->IsClearedJniWeakGlobal(referent) || referent == nullptr) {
       return true;
     } else {
