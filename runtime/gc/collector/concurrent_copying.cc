@@ -1153,11 +1153,14 @@ class ConcurrentCopying::ComputeLiveBytesAndMarkRefFieldsVisitor {
   mutable bool contains_inter_region_idx_;
 };
 
+// yizhe: add live bytes and scan ref
 void ConcurrentCopying::AddLiveBytesAndScanRef(mirror::Object* ref) {
   DCHECK(ref != nullptr);
   DCHECK(!immune_spaces_.ContainsObject(ref));
   DCHECK(TestMarkBitmapForRef(ref));
   size_t obj_region_idx = static_cast<size_t>(-1);
+  // yizhe: Calculate page index for the reference
+  size_t obj_page_idx = static_cast<size_t>(-1);
   if (LIKELY(region_space_->HasAddress(ref))) {
     obj_region_idx = region_space_->RegionIdxForRefUnchecked(ref);
     // Add live bytes to the corresponding region
@@ -1167,8 +1170,12 @@ void ConcurrentCopying::AddLiveBytesAndScanRef(mirror::Object* ref) {
       size_t obj_size = ref->SizeOf<kDefaultVerifyFlags>();
       size_t alloc_size = RoundUp(obj_size, space::RegionSpace::kAlignment);
       region_space_->AddLiveBytes(ref, alloc_size);
+      
+      // yizhe: Update the page bitmap of the region that the object is in
+      region_space_->UpdatePageBitmap(ref, alloc_size);
     }
   }
+
   ComputeLiveBytesAndMarkRefFieldsVisitor</*kHandleInterRegionRefs*/ true>
       visitor(this, obj_region_idx);
   ref->VisitReferences</*kVisitNativeRoots=*/ true, kDefaultVerifyFlags, kWithoutReadBarrier>(
@@ -1364,6 +1371,7 @@ void ConcurrentCopying::MarkingPhase() {
   if (kVerboseMode) {
     LOG(INFO) << "GC MarkingPhase";
   }
+  // LOG(INFO) << "[Yizhe] GC MarkingPhase";
   accounting::CardTable* const card_table = heap_->GetCardTable();
   Thread* const self = Thread::Current();
   CHECK_EQ(self, thread_running_gc_);
@@ -1411,9 +1419,13 @@ void ConcurrentCopying::MarkingPhase() {
   // Process mark stack
   ProcessMarkStackForMarkingAndComputeLiveBytes();
 
+  // yizhe: Dump the number of zero pages in the old regions
+  region_space_->DumpOldPageStats();
+
   if (kVerboseMode) {
     LOG(INFO) << "GC end of MarkingPhase";
   }
+  // LOG(INFO) << "[Yizhe] GC end of MarkingPhase";
 }
 
 template <bool kNoUnEvac>

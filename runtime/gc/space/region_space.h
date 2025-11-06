@@ -21,6 +21,7 @@
 #include "base/mutex.h"
 #include "space.h"
 #include "thread.h"
+#include "gc/accounting/bitmap.h"
 
 #include <functional>
 #include <map>
@@ -322,6 +323,55 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
     reg->AddLiveBytes(alloc_size);
   }
 
+  void UpdatePageBitmap(mirror::Object* ref, size_t alloc_size) {
+    Region* reg = RefToRegionUnlocked(ref);
+    reg->UpdatePageBitmap(ref, alloc_size);
+  }
+
+  // yizhe: dump the number of zero pages in the old regions
+  void DumpOldPageStats() REQUIRES(!region_lock_) {
+    LOG(INFO) << "[Yizhe] GC MarkingPhase";
+    MutexLock mu(Thread::Current(), region_lock_);
+    int old_region_count = 0;
+    int new_allocated_region_count = 0;
+    int other_region_count = 0;
+    // yizhe: calculate the zero page ratio in the old regions
+    int total_zero_pages_in_old_regions = 0;
+    for (size_t i = 0; i < num_regions_; ++i) {
+      Region* r = &regions_[i];
+      if (!r->IsNewlyAllocated() && !r->IsFree()) {
+        old_region_count++;
+        size_t zero_pages = r->CountZeroPages();
+        if (zero_pages == 0) continue;
+        total_zero_pages_in_old_regions += zero_pages;
+        std::vector<std::pair<size_t, size_t>> zero_page_ranges;
+        r->GetContinuousZeroPageRanges(zero_page_ranges);
+        
+        std::string line;
+        for (size_t idx = 0; idx < zero_page_ranges.size(); ++idx) {
+          const auto& range = zero_page_ranges[idx];
+          line += "[" + std::to_string(range.first) + "," + std::to_string(range.second) + "]";
+          if (idx + 1 < zero_page_ranges.size()) {
+            line += ", ";
+          }
+        }
+        if (!zero_page_ranges.empty()) {
+          LOG(INFO) << "[Yizhe] Region " << i << "/" << num_regions_ << " has zero page ranges: " << line;
+        }
+        // LOG(INFO) << "[Yizhe] Region " << i << "/" << num_regions_ << " has " << zero_pages << " zero pages, total pages: " << kRegionSize / GetPageSizeSlow();
+      } else if (r->IsNewlyAllocated()) {
+        new_allocated_region_count++;
+      } else {
+        other_region_count++;
+      }
+    }
+    LOG(INFO) << "[Yizhe] Old region count: " << old_region_count
+    << ", New allocated region count: " << new_allocated_region_count
+    << ", Other region count: " << other_region_count
+    << ", garbage pages in old regions: " << total_zero_pages_in_old_regions
+    << ", garbage pages ratio: " << static_cast<double>(total_zero_pages_in_old_regions) / (old_region_count * 1.0 * kRegionSize / GetPageSizeSlow());
+  }
+
   void AssertAllRegionLiveBytesZeroOrCleared() REQUIRES(!region_lock_) {
     if (kIsDebugBuild) {
       MutexLock mu(Thread::Current(), region_lock_);
@@ -404,7 +454,8 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
           is_newly_allocated_(false),
           is_a_tlab_(false),
           state_(RegionState::kRegionStateAllocated),
-          type_(RegionType::kRegionTypeToSpace) {}
+          type_(RegionType::kRegionTypeToSpace),
+          page_bitmap_(nullptr) {}
 
     void Init(size_t idx, uint8_t* begin, uint8_t* end) {
       idx_ = idx;
@@ -419,6 +470,16 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
       is_newly_allocated_ = false;
       is_a_tlab_ = false;
       thread_ = nullptr;
+
+      // yizhe
+      if (page_bitmap_ != nullptr) {
+        page_bitmap_->Clear();
+      } else {
+        std::string bitmap_name = "r_" + std::to_string(idx);
+        page_bitmap_ = accounting::Bitmap::Create(bitmap_name, kRegionSize / GetPageSizeSlow());
+        DCHECK(page_bitmap_ != nullptr) << "Failed to create bitmap for region " << idx;
+      }
+
       DCHECK_LT(begin, end);
       DCHECK_EQ(static_cast<size_t>(end - begin), kRegionSize);
     }
@@ -568,6 +629,58 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
       DCHECK_LE(live_bytes_, BytesAllocated());
     }
 
+    // yizhe: update the page bitmap of the region
+    void UpdatePageBitmap(mirror::Object* ref, size_t alloc_size) {
+      DCHECK(page_bitmap_ != nullptr);
+      DCHECK(Contains(ref));
+      // yizhe: Both start_pg_idx and end_pg_idx cover the first and last pages of the range [ref, ref + alloc_size - 1]
+      size_t start_pg_idx = (reinterpret_cast<uintptr_t>(ref) - reinterpret_cast<uintptr_t>(Begin())) / GetPageSizeSlow();
+      size_t end_pg_idx = (reinterpret_cast<uintptr_t>(ref) + alloc_size - 1 - reinterpret_cast<uintptr_t>(Begin())) / GetPageSizeSlow();
+      for (size_t pg_idx = start_pg_idx; pg_idx <= end_pg_idx; pg_idx++) {
+        page_bitmap_->SetBit(pg_idx);
+      }
+    }
+
+    // yizhe: count the number of zero pages in the region
+    size_t CountZeroPages() const {
+      size_t num_pages = kRegionSize / GetPageSizeSlow();
+      size_t count = 0;
+      for (size_t pg_idx = 0; pg_idx < num_pages; ++pg_idx) {
+        if (!page_bitmap_->TestBit(pg_idx)) {
+          count++;
+        }
+      }
+      return count;
+    }
+
+    // yizhe: Returns all contiguous ranges of zero pages (pages for which page_bitmap_ is not set)
+    // within the region. Each range is represented as a [start, end] pair (both inclusive).
+    void GetContinuousZeroPageRanges(std::vector<std::pair<size_t, size_t>>& ranges) const {
+      size_t num_pages = kRegionSize / GetPageSizeSlow();
+      bool in_zero_range = false;
+      size_t range_start = 0;
+      // Iterate over every page
+      for (size_t pg_idx = 0; pg_idx < num_pages; ++pg_idx) {
+        if (!page_bitmap_->TestBit(pg_idx)) {  // This page is a zero page
+          if (!in_zero_range) {
+            // Start of a new zero-page range
+            range_start = pg_idx;
+            in_zero_range = true;
+          }
+        } else {  // This page is NOT a zero page
+          if (in_zero_range) {
+            // End of the current zero-page range, record range [range_start, pg_idx - 1]
+            ranges.emplace_back(range_start, pg_idx - 1);
+            in_zero_range = false;
+          }
+        }
+      }
+      // If the last page is a zero page, add the trailing range
+      if (in_zero_range) {
+        ranges.emplace_back(range_start, num_pages - 1);
+      }
+    }
+    
     bool AllAllocatedBytesAreLive() const {
       return LiveBytes() == static_cast<size_t>(Top() - Begin());
     }
@@ -642,6 +755,9 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
     RegionState state_;                 // The region state (see RegionState).
     RegionType type_;                   // The region type (see RegionType).
 
+    // yizhe
+    accounting::Bitmap* page_bitmap_;
+
     friend class RegionSpace;
   };
 
@@ -660,6 +776,7 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
 
   void TraceHeapSize() REQUIRES(region_lock_);
 
+public:
   Region* RefToRegionUnlocked(mirror::Object* ref) NO_THREAD_SAFETY_ANALYSIS {
     // For a performance reason (this is frequently called via
     // RegionSpace::IsInFromSpace, etc.) we avoid taking a lock here.
@@ -671,6 +788,7 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
     return RefToRegionLocked(ref);
   }
 
+private:
   Region* RefToRegionLocked(mirror::Object* ref) REQUIRES(region_lock_) {
     DCHECK(HasAddress(ref));
     uintptr_t offset = reinterpret_cast<uintptr_t>(ref) - reinterpret_cast<uintptr_t>(Begin());

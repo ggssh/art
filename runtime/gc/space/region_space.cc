@@ -121,6 +121,7 @@ RegionSpace::RegionSpace(const std::string& name, MemMap&& mem_map, bool use_gen
   CHECK_ALIGNED(mem_map_.Size(), kRegionSize);
   CHECK_ALIGNED(mem_map_.Begin(), kRegionSize);
   DCHECK_GT(num_regions_, 0U);
+  // LOG(INFO) << "[Yizhe] mem_map_.Size(): " << mem_map_.Size() << ", RegionSize: " << kRegionSize << ", num_regions_: " << num_regions_;
   regions_.reset(new Region[num_regions_]);
   uint8_t* region_addr = mem_map_.Begin();
   for (size_t i = 0; i < num_regions_; ++i, region_addr += kRegionSize) {
@@ -1018,6 +1019,14 @@ size_t RegionSpace::AllocationSizeNonvirtual(mirror::Object* obj, size_t* usable
   return num_bytes;
 }
 
+/*
+yizhe: Clear the region
+ConcurrentCopying::ReclaimPhase()
+  └─> RegionSpace::ClearFromSpace()
+      ├─> Region::Clear()  // clear from-space region
+      ├─> Region::Clear()  // clear empty unevac from-space region
+      └─> Region::Clear()  // clear large tail region
+*/
 void RegionSpace::Region::Clear(bool zero_and_release_pages) {
   top_.store(begin_, std::memory_order_relaxed);
   state_ = RegionState::kRegionStateFree;
@@ -1031,6 +1040,9 @@ void RegionSpace::Region::Clear(bool zero_and_release_pages) {
   is_newly_allocated_ = false;
   is_a_tlab_ = false;
   thread_ = nullptr;
+  if (page_bitmap_ != nullptr) {
+    page_bitmap_->Clear();
+  }
 }
 
 void RegionSpace::TraceHeapSize() {
