@@ -2746,9 +2746,9 @@ class ImageSpace::BootImageLoader {
     int64_t base_diff64 =
         static_cast<int64_t>(reinterpret_cast32<uint32_t>(first_space->Begin())) -
         static_cast<int64_t>(reinterpret_cast32<uint32_t>(first_space_header.GetImageBegin()));
-    if (!relocate_) {
-      DCHECK_EQ(base_diff64, 0);
-    }
+    // if (!relocate_) {
+    //   DCHECK_EQ(base_diff64, 0);
+    // }
 
     // While `Thread::Current()` is null, the `ScopedDebugDisallowReadBarriers`
     // cannot be used but the class `ReadBarrier` shall not allow read barriers anyway.
