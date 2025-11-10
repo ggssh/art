@@ -119,6 +119,10 @@ bool EntrypointCanTriggerGC(QuickEntrypointEnum entrypoint) {
     case kQuickA64Store:
       return false;
 
+    // RecordRefInfo only logs information and does not trigger GC.
+    // case kQuickRecordRefInfo:
+    //   return false;
+
     default:
       return true;
   }

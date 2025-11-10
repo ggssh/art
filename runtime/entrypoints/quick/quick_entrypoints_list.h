@@ -207,7 +207,7 @@
   V(ReadBarrierMarkReg29, mirror::Object*, mirror::Object*) \
   V(ReadBarrierSlow, mirror::Object*, mirror::Object*, mirror::Object*, uint32_t) \
   V(ReadBarrierForRootSlow, mirror::Object*, GcRoot<mirror::Object>*) \
-\
+  /* V(RecordRefInfo, void, mirror::Object*, mirror::Object*)*/ \
   V(MethodEntryHook, void, ArtMethod*, Thread*) \
   V(MethodExitHook, int32_t, Thread*, ArtMethod*, uint64_t*, uint64_t*) \
   V(RecordEntryTraceEvent, void) \

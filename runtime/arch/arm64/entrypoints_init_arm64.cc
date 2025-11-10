@@ -209,6 +209,7 @@ void InitEntryPoints(JniEntryPoints* jpoints,
   UpdateReadBarrierEntrypoints(qpoints, /*is_active=*/ false);
   qpoints->SetReadBarrierSlow(artReadBarrierSlow);
   qpoints->SetReadBarrierForRootSlow(artReadBarrierForRootSlow);
+  // qpoints->SetRecordRefInfo(artRecordRefInfo);
 
   if (art_flags::always_enable_profile_code()) {
     // These are used for always-on-tracing, currently only supported on arm64

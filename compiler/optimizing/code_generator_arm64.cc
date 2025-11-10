@@ -2406,6 +2406,8 @@ void InstructionCodeGeneratorARM64::HandleFieldGet(HInstruction* instruction,
 }
 
 void LocationsBuilderARM64::HandleFieldSet(HInstruction* instruction) {
+  // LocationSummary* locations =
+  //     new (GetGraph()->GetAllocator()) LocationSummary(instruction, LocationSummary::kCallOnMainOnly);
   LocationSummary* locations =
       new (GetGraph()->GetAllocator()) LocationSummary(instruction, LocationSummary::kNoCall);
   locations->SetInAt(0, Location::RequiresRegister());
@@ -2460,10 +2462,16 @@ void InstructionCodeGeneratorARM64::HandleFieldSet(HInstruction* instruction,
   if (needs_write_barrier) {
     DCHECK_IMPLIES(Register(value).IsZero(),
                    write_barrier_kind == WriteBarrierKind::kEmitBeingReliedOn);
+    // yizhe: todo
     codegen_->MaybeMarkGCCard(
         obj,
         Register(value),
         value_can_be_null && write_barrier_kind == WriteBarrierKind::kEmitNotBeingReliedOn);
+    
+    // InvokeRuntimeCallingConvention calling_convention;
+    // __ Mov(calling_convention.GetRegisterAt(0).W(), obj);
+    // __ Mov(calling_convention.GetRegisterAt(1).W(), Register(value));
+    // codegen_->InvokeRuntime(kQuickRecordRefInfo, instruction, instruction->GetDexPc());
   } else if (codegen_->ShouldCheckGCCard(field_type, instruction->InputAt(1), write_barrier_kind)) {
     codegen_->CheckGCCardIsValid(obj);
   }

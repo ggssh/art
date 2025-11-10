@@ -299,6 +299,9 @@ enum class DeoptimizationKind;
       uint32_t offset)                                                                            \
   V(artReadBarrierForRootSlow, REQUIRES_SHARED(Locks::mutator_lock_) HOT_ATTR, mirror::Object*,   \
       GcRoot<mirror::Object>* root)                                                               \
+  /* V(artRecordRefInfo, REQUIRES_SHARED(Locks::mutator_lock_) HOT_ATTR, void,                    \
+      mirror::Object* holder,                                                                     \
+      mirror::Object* value) */                                                                   \
                                                                                                   \
   V(artLockObjectFromCode, NO_THREAD_SAFETY_ANALYSIS REQUIRES(!Roles::uninterruptible_)           \
       REQUIRES_SHARED(Locks::mutator_lock_), int,                                                 \

@@ -15,6 +15,7 @@
  */
 
 #include <stdint.h>
+// #include <string>
 
 #include "art_field-inl.h"
 #include "art_method-inl.h"
@@ -466,5 +467,21 @@ extern "C" mirror::Object* artReadBarrierForRootSlow(GcRoot<mirror::Object>* roo
   DCHECK(gUseReadBarrier);
   return root->Read();
 }
+
+// yizhe: record ref info entrypoint
+// extern "C" void artRecordRefInfo([[maybe_unused]] mirror::Object* holder, [[maybe_unused]] mirror::Object* value)
+//     REQUIRES_SHARED(Locks::mutator_lock_) {
+//   static int execution_count_compiler = 0;
+//   execution_count_compiler++;
+//   if (execution_count_compiler % 50000 == 0) {
+//     LOG(INFO) << "RecordRefInfo: compiler time with execution_count_compiler = " << execution_count_compiler;
+
+//     if (holder != nullptr && value != nullptr) {
+//       std::string class_name_holder = holder->GetClass()->PrettyDescriptor();
+//       std::string class_name_value = value->GetClass()->PrettyDescriptor();
+//       LOG(INFO) << "RecordRefInfo: class_name_holder = " << class_name_holder << ", class_name_value = " << class_name_value;
+//     }
+//   }
+// }
 
 }  // namespace art
