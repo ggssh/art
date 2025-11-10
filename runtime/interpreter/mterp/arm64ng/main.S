@@ -1377,12 +1377,16 @@ END \name
    .endif
 .endm
 
+// yizhe: \value -> w26, \holder -> w0,w2
 .macro WRITE_BARRIER_IF_OBJECT is_object, value, holder, label
    .if \is_object
    cbz     \value, \label
    ldr     ip, [xSELF, #THREAD_CARD_TABLE_OFFSET]
    lsr     wip2, \holder, #CARD_TABLE_CARD_SHIFT
    strb    wip, [ip, ip2]
+   mov     w0, \holder
+   mov     w1, \value
+   bl nterp_record_ref_info
 \label:
    .endif
 .endm
@@ -1898,6 +1902,7 @@ NTERP_TRAMPOLINE nterp_allocate_object, NterpAllocateObject
 NTERP_TRAMPOLINE nterp_get_method, NterpGetMethod
 NTERP_TRAMPOLINE nterp_hot_method, NterpHotMethod
 NTERP_TRAMPOLINE nterp_load_object, NterpLoadObject
+NTERP_TRAMPOLINE nterp_record_ref_info, NterpRecordRefInfo
 
 ENTRY nterp_deliver_pending_exception
     DELIVER_PENDING_EXCEPTION

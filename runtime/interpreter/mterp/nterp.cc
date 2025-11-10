@@ -19,6 +19,7 @@
  */
 #include "nterp.h"
 
+#include "android-base/logging.h"
 #include "arch/instruction_set.h"
 #include "base/quasi_atomic.h"
 #include "class_linker-inl.h"
@@ -513,6 +514,21 @@ extern "C" mirror::Object* NterpGetClass(Thread* self, ArtMethod* caller, uint16
 
   UpdateCache(self, dex_pc_ptr, c.Ptr());
   return c.Ptr();
+}
+
+extern "C" void NterpRecordRefInfo( [[maybe_unused]] mirror::Object* holder, [[maybe_unused]] mirror::Object* value)
+    REQUIRES_SHARED(Locks::mutator_lock_) {
+  static int execution_count_interpreter = 0;
+  execution_count_interpreter++;
+  if (execution_count_interpreter % 50000 == 0) {
+    LOG(INFO) << "RecordRefInfo: interpreter time with execution_count_interpreter = " << execution_count_interpreter;
+
+    if (holder != nullptr && value != nullptr) {
+      std::string class_name_holder = holder->GetClass()->PrettyDescriptor();
+      std::string class_name_value = value->GetClass()->PrettyDescriptor();
+      LOG(INFO) << "RecordRefInfo: class_name_holder = " << class_name_holder << ", class_name_value = " << class_name_value;
+    }
+  }
 }
 
 extern "C" mirror::Object* NterpAllocateObject(Thread* self,
