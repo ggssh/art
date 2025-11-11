@@ -48,6 +48,7 @@ extern "C" void android_set_application_target_sdk_version(uint32_t version);
 #include "gc/space/image_space.h"
 #include "gc/task_processor.h"
 #include "intern_table.h"
+#include "interpreter/mterp/nterp.h"
 #include "jit/jit.h"
 #include "jni/java_vm_ext.h"
 #include "jni/jni_internal.h"
@@ -448,6 +449,8 @@ static void VMRuntime_setProcessPackageName(JNIEnv* env,
                                             jstring java_package_name) {
   ScopedUtfChars package_name(env, java_package_name);
   Runtime::Current()->SetProcessPackageName(package_name.c_str());
+  // Initialize nterp record ref info after setting package name.
+  interpreter::InitNterpRecordRefInfo();
 }
 
 static void VMRuntime_setProcessDataDirectory(JNIEnv* env, jclass, jstring java_data_dir) {

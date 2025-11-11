@@ -31,6 +31,9 @@
 #include "interpreter/shadow_frame-inl.h"
 #include "mirror/string-alloc-inl.h"
 #include "nterp_helpers.h"
+#include "runtime.h"
+
+#include <android-base/properties.h>
 
 namespace art HIDDEN {
 namespace interpreter {
@@ -516,8 +519,56 @@ extern "C" mirror::Object* NterpGetClass(Thread* self, ArtMethod* caller, uint16
   return c.Ptr();
 }
 
+// Static flag to track whether reference recording is enabled for the current process.
+// Initialized to false, and set during Runtime initialization based on system property.
+static bool g_record_ref_enabled = false;
+
+// Initialize the record ref enabled flag based on system property and current package name.
+// This should be called during Runtime initialization, after the package name is set.
+void InitNterpRecordRefInfo() {
+  // Read target application package name from system property.
+  // System property name: dalvik.vm.nterp.target-package
+  const std::string target_package =
+      ::android::base::GetProperty("dalvik.vm.nterp.target-package", "");
+  
+  Runtime* runtime = Runtime::Current();
+  if (runtime == nullptr) {
+    // Runtime not yet initialized, keep default (false)
+    return;
+  }
+  
+  const std::string& current_package = runtime->GetProcessPackageName();
+  LOG(INFO) << "NterpRecordRefInfo: INITIALIZING - current_package = " << current_package 
+            << ", target_package = " << target_package;
+  
+  if (!target_package.empty()) {
+    g_record_ref_enabled = (current_package == target_package);
+    
+    if (g_record_ref_enabled) {
+      LOG(INFO) << "NterpRecordRefInfo: enabled for package " << current_package;
+    } else {
+      LOG(INFO) << "NterpRecordRefInfo: disabled (package mismatch)";
+    }
+  } else {
+    // No target package specified, default behavior (currently false)
+    LOG(INFO) << "NterpRecordRefInfo: no target package specified, disabled by default";
+  }
+}
+
+// Check whether the current process should record reference information.
+// Returns the flag value that was set during Runtime initialization.
+static bool ShouldRecordRefInfo() REQUIRES_SHARED(Locks::mutator_lock_) {
+  return g_record_ref_enabled;
+}
+
 extern "C" void NterpRecordRefInfo( [[maybe_unused]] mirror::Object* holder, [[maybe_unused]] mirror::Object* value)
     REQUIRES_SHARED(Locks::mutator_lock_) {
+  // Check if recording should be enabled (package name matching is only checked on first call).
+  // This will trigger the initialization in ShouldRecordRefInfo() on first call.
+  if (!ShouldRecordRefInfo()) {
+    return;
+  }
+  
   static int execution_count_interpreter = 0;
   execution_count_interpreter++;
   if (execution_count_interpreter % 50000 == 0) {

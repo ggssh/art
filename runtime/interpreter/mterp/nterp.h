@@ -37,6 +37,7 @@ const void* GetNterpEntryPoint();
 const void* GetNterpWithClinitEntryPoint();
 ArrayRef<const uint8_t> NterpWithClinitImpl();
 ArrayRef<const uint8_t> NterpImpl();
+void InitNterpRecordRefInfo();
 
 constexpr uint16_t kNterpHotnessValue = 0;
 
