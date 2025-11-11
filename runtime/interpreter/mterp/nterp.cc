@@ -571,13 +571,14 @@ extern "C" void NterpRecordRefInfo( [[maybe_unused]] mirror::Object* holder, [[m
   
   static int execution_count_interpreter = 0;
   execution_count_interpreter++;
-  if (execution_count_interpreter % 50000 == 0) {
-    LOG(INFO) << "RecordRefInfo: interpreter time with execution_count_interpreter = " << execution_count_interpreter;
+  if (execution_count_interpreter % 200 == 0) {
+    // LOG(INFO) << "RecordRefInfo: interpreter time with execution_count_interpreter = " << execution_count_interpreter;
 
     if (holder != nullptr && value != nullptr) {
       std::string class_name_holder = holder->GetClass()->PrettyDescriptor();
       std::string class_name_value = value->GetClass()->PrettyDescriptor();
-      LOG(INFO) << "RecordRefInfo: class_name_holder = " << class_name_holder << ", class_name_value = " << class_name_value;
+      // LOG(INFO) << "RecordRefInfo: class_name_holder = " << class_name_holder << ", class_name_value = " << class_name_value;
+      Runtime::Current()->RecordRefRelationship(class_name_holder, class_name_value);
     }
   }
 }

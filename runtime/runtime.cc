@@ -26,6 +26,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/mount.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 
 #if defined(__APPLE__)
@@ -36,9 +37,11 @@
 #include <android-base/strings.h>
 #include <string.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
+#include <sstream>
 #include <thread>
 #include <unordered_set>
 #include <vector>
@@ -2444,6 +2447,137 @@ void Runtime::DumpDeoptimizations(std::ostream& os) {
          << deoptimization_counts_[i]
          << "\n";
     }
+  }
+}
+
+void Runtime::DumpRefRelationships() const {
+  if (ref_relationship_counts_.empty()) {
+    LOG(INFO) << "No reference relationships recorded.";
+    return;
+  }
+  
+  LOG(INFO) << "Reference relationship statistics (" << ref_relationship_counts_.size() 
+            << " unique relationships):";
+  
+  for (const auto& entry : ref_relationship_counts_) {
+    LOG(INFO) << "YYZ [" << entry.second << "] (" << entry.first.first 
+              << " -> " << entry.first.second << ")";
+  }
+}
+
+void Runtime::UpdateRefRelationshipDumpFilePath() {
+  if (!ref_relationship_dump_file_path_.empty()) {
+    LOG(INFO) << "UpdateRefRelationshipDumpFilePath: already initialized, skip";
+    return;
+  }
+  
+  const std::string& package = GetProcessPackageName();
+  LOG(INFO) << "UpdateRefRelationshipDumpFilePath: start, package=" << package;
+  
+  if (package.empty()) {
+    LOG(INFO) << "UpdateRefRelationshipDumpFilePath: package empty, skip";
+    return;
+  }
+  
+  // Check if package name matches target package from system property
+  const std::string target_package =
+      ::android::base::GetProperty("dalvik.vm.nterp.target-package", "");
+  LOG(INFO) << "UpdateRefRelationshipDumpFilePath: target_package=" << target_package;
+  
+  if (target_package.empty() || package != target_package) {
+    // Package name doesn't match, don't create file path
+    LOG(INFO) << "UpdateRefRelationshipDumpFilePath: package mismatch or no target, skip";
+    return;
+  }
+  
+  // Read base data directory from system property
+  const std::string data_dir = ::android::base::GetProperty("dalvik.vm.nterp.ref-info-data-dir", "/data/data");
+  LOG(INFO) << "UpdateRefRelationshipDumpFilePath: data_dir=" << data_dir;
+  
+  // Package name matches, set up file path: data_dir + "/" + package + "/ref_info.txt"
+  std::string base_path = data_dir + "/" + package;
+  ref_relationship_dump_file_path_ = base_path + "/ref_info.txt";
+  LOG(INFO) << "UpdateRefRelationshipDumpFilePath: base_path=" << base_path
+            << ", file_path=" << ref_relationship_dump_file_path_;
+  
+  // Ensure the base directory exists before creating the file
+  if (!OS::DirectoryExists(base_path.c_str())) {
+    static constexpr mode_t kDirectoryMode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+    if (mkdir(base_path.c_str(), kDirectoryMode) != 0) {
+      PLOG(WARNING) << "UpdateRefRelationshipDumpFilePath: failed to create directory: " << base_path;
+      ref_relationship_dump_file_path_.clear();
+      return;
+    }
+    LOG(INFO) << "UpdateRefRelationshipDumpFilePath: created directory " << base_path;
+  } else {
+    LOG(INFO) << "UpdateRefRelationshipDumpFilePath: directory exists " << base_path;
+  }
+  
+  // Create empty file for future appends
+  std::unique_ptr<File> file(OS::CreateEmptyFileWriteOnly(ref_relationship_dump_file_path_.c_str()));
+  if (file == nullptr) {
+    PLOG(WARNING) << "UpdateRefRelationshipDumpFilePath: failed to create ref relationship dump file: " << ref_relationship_dump_file_path_;
+    // Clear path if we can't create the file
+    ref_relationship_dump_file_path_.clear();
+    return;
+  }
+  // Close file after creation
+  if (file->Close() != 0) {
+    PLOG(WARNING) << "UpdateRefRelationshipDumpFilePath: failed to close ref relationship dump file: " << ref_relationship_dump_file_path_;
+    ref_relationship_dump_file_path_.clear();
+    return;
+  }
+  LOG(INFO) << "UpdateRefRelationshipDumpFilePath: file initialized: " << ref_relationship_dump_file_path_;
+}
+
+void Runtime::DumpRefRelationshipsToFile() const {
+  if (ref_relationship_dump_file_path_.empty()) {
+    LOG(WARNING) << "Reference relationship dump file path not set, skipping file dump";
+    return;
+  }
+  
+  // Check GC round number (GetCurrentGcNum() returns completed GCs, +1 for current)
+  uint32_t gc_num = GetHeap()->GetCurrentGcNum() + 1;
+  
+  // Only dump on odd-numbered GC rounds (1, 3, 5, 7, ...)
+  if (gc_num % 2 == 0) {
+    return;
+  }
+  
+  // Open file in append mode
+  std::unique_ptr<File> file(OS::OpenFileWithFlags(ref_relationship_dump_file_path_.c_str(),
+                                                   O_CREAT | O_WRONLY | O_APPEND));
+  if (file == nullptr) {
+    PLOG(ERROR) << "Unable to open file for appending: " << ref_relationship_dump_file_path_;
+    return;
+  }
+  
+  std::ostringstream os;
+  
+  // Add GC round identifier
+  os << "\nGC Round #" << gc_num << "\n";
+  
+  if (ref_relationship_counts_.empty()) {
+    os << "No reference relationships recorded.\n";
+  } else {
+    os << "Reference relationship statistics (" << ref_relationship_counts_.size() 
+       << " unique relationships):\n";
+    
+    for (const auto& entry : ref_relationship_counts_) {
+      os << "YYZ [" << entry.second << "] (" << entry.first.first 
+         << " -> " << entry.first.second << ")\n";
+    }
+  }
+  
+  std::string content = os.str();
+  if (!file->WriteFully(content.c_str(), content.length())) {
+    PLOG(WARNING) << "Failed writing reference relationships to file: " << ref_relationship_dump_file_path_;
+  }
+  
+  if (!file->Close()) {
+    PLOG(WARNING) << "Failed to close file: " << ref_relationship_dump_file_path_;
+  } else {
+    LOG(INFO) << "Reference relationships dumped to file (GC Round #" << gc_num << "): " << ref_relationship_dump_file_path_;
   }
 }
 

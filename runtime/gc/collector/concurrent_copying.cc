@@ -257,6 +257,9 @@ void ConcurrentCopying::RunPhases() {
     ReclaimPhase();
   }
   FinishPhase();
+  // LOG(INFO) << "Ref relationship count: " << Runtime::Current()->GetRefRelationshipCount();
+  // Runtime::Current()->DumpRefRelationships();
+  Runtime::Current()->DumpRefRelationshipsToFile();
   CHECK(is_active_);
   is_active_ = false;
   thread_running_gc_ = nullptr;

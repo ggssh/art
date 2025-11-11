@@ -25,6 +25,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -319,6 +320,9 @@ class Runtime {
   void DumpDeoptimizations(std::ostream& os);
   void DumpForSigQuit(std::ostream& os);
   void DumpLockHolders(std::ostream& os);
+  void DumpRefRelationships() const;
+  void DumpRefRelationshipsToFile() const;
+  void UpdateRefRelationshipDumpFilePath();
 
   EXPORT ~Runtime();
 
@@ -715,6 +719,18 @@ class Runtime {
     } else {
       process_package_name_ = package_name;
     }
+  }
+
+  // Record a reference relationship (holder -> value) for statistics.
+  void RecordRefRelationship(const std::string& holder_class_name,
+                             const std::string& value_class_name) {
+    auto key = std::make_pair(holder_class_name, value_class_name);
+    ref_relationship_counts_[key]++;
+  }
+
+  // Get the number of unique reference relationships recorded.
+  size_t GetRefRelationshipCount() const {
+    return ref_relationship_counts_.size();
   }
 
   const std::string& GetProcessDataDirectory() const {
@@ -1476,6 +1492,9 @@ class Runtime {
   // The data directory of the app running in this process.
   std::string process_data_directory_;
 
+  // File path for dumping reference relationships (base_path + package_name)
+  std::string ref_relationship_dump_file_path_;
+
   // Whether threads should dump their native stack on SIGQUIT.
   bool dump_native_stack_on_sig_quit_;
 
@@ -1557,6 +1576,15 @@ class Runtime {
 
   // The info about the application code paths.
   AppInfo app_info_;
+
+  // Reference relationship statistics: maps (holder_class_name, value_class_name) to count.
+  // Uses a custom hash function for std::pair<std::string, std::string>.
+  struct PairStringHash {
+    size_t operator()(const std::pair<std::string, std::string>& p) const {
+      return std::hash<std::string>()(p.first) ^ (std::hash<std::string>()(p.second) << 1);
+    }
+  };
+  std::unordered_map<std::pair<std::string, std::string>, size_t, PairStringHash> ref_relationship_counts_;
 
   // Note: See comments on GetFaultMessage.
   friend std::string GetFaultMessageForAbortLogging();

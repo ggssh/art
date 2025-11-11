@@ -451,6 +451,8 @@ static void VMRuntime_setProcessPackageName(JNIEnv* env,
   Runtime::Current()->SetProcessPackageName(package_name.c_str());
   // Initialize nterp record ref info after setting package name.
   interpreter::InitNterpRecordRefInfo();
+  // Update ref relationship dump file path after checking package name match.
+  Runtime::Current()->UpdateRefRelationshipDumpFilePath();
 }
 
 static void VMRuntime_setProcessDataDirectory(JNIEnv* env, jclass, jstring java_data_dir) {
