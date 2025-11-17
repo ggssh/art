@@ -25,6 +25,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -721,10 +722,11 @@ class Runtime {
     }
   }
 
-  // Record a reference relationship (holder -> value) for statistics.
+  // Record a reference relationship [holder->old_value] -> [holder->new_value] for statistics.
   void RecordRefRelationship(const std::string& holder_class_name,
-                             const std::string& value_class_name) {
-    auto key = std::make_pair(holder_class_name, value_class_name);
+                             const std::string& old_value_class_name,
+                             const std::string& new_value_class_name) {
+    auto key = std::make_tuple(holder_class_name, old_value_class_name, new_value_class_name);
     ref_relationship_counts_[key]++;
   }
 
@@ -1577,14 +1579,18 @@ class Runtime {
   // The info about the application code paths.
   AppInfo app_info_;
 
-  // Reference relationship statistics: maps (holder_class_name, value_class_name) to count.
-  // Uses a custom hash function for std::pair<std::string, std::string>.
-  struct PairStringHash {
-    size_t operator()(const std::pair<std::string, std::string>& p) const {
-      return std::hash<std::string>()(p.first) ^ (std::hash<std::string>()(p.second) << 1);
+  // Reference relationship statistics: maps (holder_class_name, old_value_class_name, new_value_class_name) to count.
+  // Represents the relationship: [holder->old_value] -> [holder->new_value]
+  // Uses a custom hash function for std::tuple<std::string, std::string, std::string>.
+  struct TripleStringHash {
+    size_t operator()(const std::tuple<std::string, std::string, std::string>& t) const {
+      size_t h1 = std::hash<std::string>()(std::get<0>(t));
+      size_t h2 = std::hash<std::string>()(std::get<1>(t));
+      size_t h3 = std::hash<std::string>()(std::get<2>(t));
+      return h1 ^ (h2 << 1) ^ (h3 << 2);
     }
   };
-  std::unordered_map<std::pair<std::string, std::string>, size_t, PairStringHash> ref_relationship_counts_;
+  std::unordered_map<std::tuple<std::string, std::string, std::string>, size_t, TripleStringHash> ref_relationship_counts_;
 
   // Note: See comments on GetFaultMessage.
   friend std::string GetFaultMessageForAbortLogging();

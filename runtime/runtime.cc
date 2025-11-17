@@ -2460,8 +2460,9 @@ void Runtime::DumpRefRelationships() const {
             << " unique relationships):";
   
   for (const auto& entry : ref_relationship_counts_) {
-    LOG(INFO) << "YYZ [" << entry.second << "] (" << entry.first.first 
-              << " -> " << entry.first.second << ")";
+    LOG(INFO) << "YYZ [" << entry.second << "] (" << std::get<0>(entry.first) 
+              << " -> [" << std::get<1>(entry.first) << " : " 
+              << std::get<2>(entry.first) << "])";
   }
 }
 
@@ -2564,8 +2565,9 @@ void Runtime::DumpRefRelationshipsToFile() const {
        << " unique relationships):\n";
     
     for (const auto& entry : ref_relationship_counts_) {
-      os << "YYZ [" << entry.second << "] (" << entry.first.first 
-         << " -> " << entry.first.second << ")\n";
+      os << "YYZ [" << entry.second << "] (" << std::get<0>(entry.first) 
+         << " -> [" << std::get<1>(entry.first) << " : " 
+         << std::get<2>(entry.first) << "])\n";
     }
   }
   

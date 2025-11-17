@@ -579,12 +579,13 @@ extern "C" void NterpRecordRefInfo( [[maybe_unused]] mirror::Object* holder, [[m
       std::string class_name_new_value = new_value->GetClass()->PrettyDescriptor();
 
       if (old_value != nullptr) {
-      std::string class_name_old_value = old_value->GetClass()->PrettyDescriptor();
-        LOG(INFO) << "RecordRefInfo: class_name_holder = " << class_name_holder << ", class_name_new_value = " << class_name_new_value << ", class_name_old_value = " << class_name_old_value;
+        std::string class_name_old_value = old_value->GetClass()->PrettyDescriptor();
+        // Record the relationship: [holder->old_value] -> [holder->new_value]
+        Runtime::Current()->RecordRefRelationship(class_name_holder, class_name_old_value, class_name_new_value);
       } else {
-        LOG(INFO) << "RecordRefInfo: class_name_holder = " << class_name_holder << ", class_name_new_value = " << class_name_new_value << ", class_name_old_value = null";
+        // Record the relationship: [holder->new_value] -> [holder->null]
+        Runtime::Current()->RecordRefRelationship(class_name_holder, "null", class_name_new_value);
       }
-      Runtime::Current()->RecordRefRelationship(class_name_holder, class_name_new_value);
     }
   }
 }
