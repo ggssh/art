@@ -241,8 +241,8 @@
 %def op_iput_short():
 %  op_iput(store="strh", volatile_store="stlrh", wide="0", is_object="0")
 
-%def op_iput(store="str", volatile_store="stlr", wide="0", is_object="0"):
-%  slow_path = add_slow_path(op_iput_slow_path, volatile_store, wide, is_object)
+%def op_iput(store="str", volatile_store="stlr", wide="0", is_object="0", load="ldr", volatile_load="ldar"):
+%  slow_path = add_slow_path(op_iput_slow_path, volatile_store, wide, is_object, load, volatile_load)
    ubfx    w1, wINST, #8, #4           // w1<- A
    .if $wide
    GET_VREG_WIDE x26, w1               // x26<- fp[A]/fp[A+1]
@@ -258,15 +258,18 @@
    .if $wide
    $store  x26, [x2, x0]
    .else
+   .if $is_object
+   $load   w4,  [x2, x0]
+   .endif
    POISON_HEAP_REF_IF_OBJECT $is_object, w26
    $store  w26, [x2, x0]
-   WRITE_BARRIER_IF_OBJECT $is_object, w26, w2, .L${opcode}_skip_write_barrier
+   WRITE_BARRIER_IF_OBJECT_PROF $is_object, w4, w26, w2, .L${opcode}_skip_write_barrier
    .endif
    FETCH_ADVANCE_INST 2
    GET_INST_OPCODE ip
    GOTO_OPCODE ip
 
-%def op_iput_slow_path(volatile_store, wide, is_object):
+%def op_iput_slow_path(volatile_store, wide, is_object, load, volatile_load):
    mov     x0, xSELF
    ldr     x1, [sp]
    mov     x2, xPC
@@ -295,9 +298,12 @@
    .if $wide
    $volatile_store x26, [x3]
    .else
+   .if $is_object
+   $volatile_load  w4,  [x3]
+   .endif
    POISON_HEAP_REF_IF_OBJECT $is_object, w26
    $volatile_store w26, [x3]
-   WRITE_BARRIER_IF_OBJECT $is_object, w26, w2, .L${opcode}_slow_path_skip_write_barrier
+   WRITE_BARRIER_IF_OBJECT_PROF $is_object, w4, w26, w2, .L${opcode}_slow_path_skip_write_barrier
    .endif
    FETCH_ADVANCE_INST 2
    GET_INST_OPCODE ip
@@ -413,8 +419,8 @@
 %def op_sput_short():
 %  op_sput(store="strh", volatile_store="stlrh", wide="0", is_object="0")
 
-%def op_sput(store="str", volatile_store="stlr", wide="0", is_object="0"):
-%  slow_path = add_slow_path(op_sput_slow_path, volatile_store, wide, is_object)
+%def op_sput(store="str", volatile_store="stlr", wide="0", is_object="0", load="ldr", volatile_load="ldar"):
+%  slow_path = add_slow_path(op_sput_slow_path, volatile_store, wide, is_object, load, volatile_load)
    lsr     w2, wINST, #8               // w2 <- A
    .if $wide
    GET_VREG_WIDE x26, w2               // x26 <- v[A]
@@ -431,9 +437,12 @@
    .if $wide
    $store  x26, [x0, x1]
    .else
+   .if $is_object
+   $load   w4,  [x0, x1]
+   .endif
    POISON_HEAP_REF_IF_OBJECT $is_object, w26
    $store  w26, [x0, x1]
-   WRITE_BARRIER_IF_OBJECT $is_object, w26, w0, .L${opcode}_skip_write_barrier
+   WRITE_BARRIER_IF_OBJECT_PROF $is_object, w4, w26, w0, .L${opcode}_skip_write_barrier
    .endif
    FETCH_ADVANCE_INST 2
    GET_INST_OPCODE ip
@@ -442,7 +451,7 @@
    bl      art_quick_read_barrier_mark_reg00
    b       .L${opcode}_resume_after_read_barrier
 
-%def op_sput_slow_path(volatile_store, wide, is_object):
+%def op_sput_slow_path(volatile_store, wide, is_object, load, volatile_load):
    mov     x0, xSELF
    ldr     x1, [sp]
    mov     x2, xPC
@@ -468,9 +477,12 @@
    .if $wide
    $volatile_store    x26, [x1]
    .else
+   .if $is_object
+   $volatile_load     w4,  [x1]
+   .endif
    POISON_HEAP_REF_IF_OBJECT $is_object, w26
    $volatile_store    w26, [x1]
-   WRITE_BARRIER_IF_OBJECT $is_object, w26, w0, .L${opcode}_slow_path_skip_write_barrier
+   WRITE_BARRIER_IF_OBJECT_PROF $is_object, w4, w26, w0, .L${opcode}_slow_path_skip_write_barrier
    .endif
    FETCH_ADVANCE_INST 2
    GET_INST_OPCODE ip

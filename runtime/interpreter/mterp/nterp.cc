@@ -561,7 +561,7 @@ static bool ShouldRecordRefInfo() REQUIRES_SHARED(Locks::mutator_lock_) {
   return g_record_ref_enabled;
 }
 
-extern "C" void NterpRecordRefInfo( [[maybe_unused]] mirror::Object* holder, [[maybe_unused]] mirror::Object* value)
+extern "C" void NterpRecordRefInfo( [[maybe_unused]] mirror::Object* holder, [[maybe_unused]] mirror::Object* new_value, [[maybe_unused]] mirror::Object* old_value)
     REQUIRES_SHARED(Locks::mutator_lock_) {
   // Check if recording should be enabled (package name matching is only checked on first call).
   // This will trigger the initialization in ShouldRecordRefInfo() on first call.
@@ -574,11 +574,17 @@ extern "C" void NterpRecordRefInfo( [[maybe_unused]] mirror::Object* holder, [[m
   if (execution_count_interpreter % 200 == 0) {
     // LOG(INFO) << "RecordRefInfo: interpreter time with execution_count_interpreter = " << execution_count_interpreter;
 
-    if (holder != nullptr && value != nullptr) {
+    if (holder != nullptr && new_value != nullptr) {
       std::string class_name_holder = holder->GetClass()->PrettyDescriptor();
-      std::string class_name_value = value->GetClass()->PrettyDescriptor();
-      // LOG(INFO) << "RecordRefInfo: class_name_holder = " << class_name_holder << ", class_name_value = " << class_name_value;
-      Runtime::Current()->RecordRefRelationship(class_name_holder, class_name_value);
+      std::string class_name_new_value = new_value->GetClass()->PrettyDescriptor();
+
+      if (old_value != nullptr) {
+      std::string class_name_old_value = old_value->GetClass()->PrettyDescriptor();
+        LOG(INFO) << "RecordRefInfo: class_name_holder = " << class_name_holder << ", class_name_new_value = " << class_name_new_value << ", class_name_old_value = " << class_name_old_value;
+      } else {
+        LOG(INFO) << "RecordRefInfo: class_name_holder = " << class_name_holder << ", class_name_new_value = " << class_name_new_value << ", class_name_old_value = null";
+      }
+      Runtime::Current()->RecordRefRelationship(class_name_holder, class_name_new_value);
     }
   }
 }

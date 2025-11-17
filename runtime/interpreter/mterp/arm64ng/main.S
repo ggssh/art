@@ -1391,6 +1391,21 @@ END \name
    .endif
 .endm
 
+// yizhe: \old_value -> w4, \new_value -> w26, \holder -> w0,w2
+.macro WRITE_BARRIER_IF_OBJECT_PROF is_object, old_value, new_value, holder, label
+   .if \is_object
+   cbz     \new_value, \label
+   ldr     ip, [xSELF, #THREAD_CARD_TABLE_OFFSET]
+   lsr     wip2, \holder, #CARD_TABLE_CARD_SHIFT
+   strb    wip, [ip, ip2]
+   mov     w0, \holder
+   mov     w1, \new_value
+   mov     w2, \old_value
+   bl nterp_record_ref_info
+\label:
+   .endif
+.endm
+
 // Puts the next int/long/object parameter passed in physical register
 // in the expected dex register array entry, and in case of object in the
 // expected reference array entry.
