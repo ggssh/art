@@ -440,6 +440,7 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
  private:
   RegionSpace(const std::string& name, MemMap&& mem_map, bool use_generational_cc);
 
+  public:
   class Region {
    public:
     Region()
@@ -685,6 +686,7 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
       return LiveBytes() == static_cast<size_t>(Top() - Begin());
     }
 
+    public:
     size_t LiveBytes() const {
       return live_bytes_;
     }
@@ -787,6 +789,11 @@ public:
     // to access the region state without the lock.
     return RefToRegionLocked(ref);
   }
+
+  Region* GetRegion(size_t idx) {
+    MutexLock mu(Thread::Current(), region_lock_);
+    return &regions_[idx];
+}
 
 private:
   Region* RefToRegionLocked(mirror::Object* ref) REQUIRES(region_lock_) {

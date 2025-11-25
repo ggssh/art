@@ -1160,7 +1160,7 @@ void ConcurrentCopying::AddLiveBytesAndScanRef(mirror::Object* ref) {
   DCHECK(TestMarkBitmapForRef(ref));
   size_t obj_region_idx = static_cast<size_t>(-1);
   // yizhe: Calculate page index for the reference
-  size_t obj_page_idx = static_cast<size_t>(-1);
+  // size_t obj_page_idx = static_cast<size_t>(-1);
   if (LIKELY(region_space_->HasAddress(ref))) {
     obj_region_idx = region_space_->RegionIdxForRefUnchecked(ref);
     // Add live bytes to the corresponding region
@@ -1172,7 +1172,7 @@ void ConcurrentCopying::AddLiveBytesAndScanRef(mirror::Object* ref) {
       region_space_->AddLiveBytes(ref, alloc_size);
       
       // yizhe: Update the page bitmap of the region that the object is in
-      region_space_->UpdatePageBitmap(ref, alloc_size);
+      // region_space_->UpdatePageBitmap(ref, alloc_size);
     }
   }
 
@@ -1367,6 +1367,7 @@ class ConcurrentCopying::ImmuneSpaceCaptureRefsVisitor {
 */
 
 void ConcurrentCopying::MarkingPhase() {
+  uint64_t start_time = NanoTime();
   TimingLogger::ScopedTiming split("MarkingPhase", GetTimings());
   if (kVerboseMode) {
     LOG(INFO) << "GC MarkingPhase";
@@ -1420,12 +1421,23 @@ void ConcurrentCopying::MarkingPhase() {
   ProcessMarkStackForMarkingAndComputeLiveBytes();
 
   // yizhe: Dump the number of zero pages in the old regions
-  region_space_->DumpOldPageStats();
+  // region_space_->DumpOldPageStats();
 
   if (kVerboseMode) {
     LOG(INFO) << "GC end of MarkingPhase";
   }
   // LOG(INFO) << "[Yizhe] GC end of MarkingPhase";
+  uint64_t end_time = NanoTime();
+  uint64_t duration_ns = end_time - start_time;
+  LOG(INFO) << "[YYZ] MarkingPhase duration: " << duration_ns;
+
+  // 遍历所有region，统计live bytes之和
+  size_t total_live_bytes = 0;
+  for (size_t i = 0; i < region_space_->GetNumRegions(); i++) {
+    space::RegionSpace::Region* r = region_space_->GetRegion(i);
+    total_live_bytes += r->LiveBytes();
+  }
+  LOG(INFO) << "[YYZ] Total live bytes: " << total_live_bytes;
 }
 
 template <bool kNoUnEvac>
