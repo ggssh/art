@@ -139,7 +139,12 @@ class Heap {
   static constexpr bool kUsePartialTlabs = true;
 
   static constexpr size_t kDefaultInitialSize = 2 * MB;
-  static constexpr size_t kDefaultMaximumSize = 256 * MB;
+  //shengkai serveral GB heap capacity for 32GB java space
+// #ifdef ART_USE_32GB_HEAP_SHIFT_COMPRESSION
+  // static constexpr size_t kDefaultMaximumSize = 4 * GB;
+// #else
+  static constexpr size_t kDefaultMaximumSize = 512 * MB;
+// #endif
   static constexpr size_t kDefaultNonMovingSpaceCapacity = 64 * MB;
   static constexpr size_t kDefaultMaxFree = 32 * MB;
   static constexpr size_t kDefaultMinFree = kDefaultMaxFree / 4;

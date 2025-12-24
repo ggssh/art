@@ -37,11 +37,24 @@
 
 namespace art {
 
+// shengkai 32GB地址空间支持, 只修改4G Flag下的实际参数
 #if defined(__LP64__) && !defined(__Fuchsia__) && !defined(_WINDOWS_)
 #define USE_ART_LOW_4G_ALLOCATOR 1
 #else
 #define USE_ART_LOW_4G_ALLOCATOR 0
 #endif
+
+// #ifdef ART_USE_32GB_HEAP_SHIFT_COMPRESSION
+// // 32GB地址空间支持
+// static constexpr size_t kMaxLowAddressSpace = 32ULL * GB;
+// static constexpr uintptr_t kMaxLowAddressSpaceShift = 35;  // log2(32GB)
+// static constexpr uintptr_t kMaxLowAddressSpaceMask = 0x7FFFFFFFFULL;  // 32GB - 1
+// #else
+// 原有4GB限制
+static constexpr size_t kMaxLowAddressSpace = 4ULL * GB;
+static constexpr uintptr_t kMaxLowAddressSpaceShift = 32;  // log2(4GB)
+static constexpr uintptr_t kMaxLowAddressSpaceMask = 0xFFFFFFFFULL;  // 4GB - 1
+// #endif
 
 #ifdef __linux__
 static constexpr bool kMadviseZeroes = true;

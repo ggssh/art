@@ -467,6 +467,7 @@ Heap::Heap(size_t initial_size,
   // entrypoints.
   const bool is_zygote = runtime->IsZygote();
   if (!is_zygote) {
+    // shengkai TODO 这里的background compaction指的是什么
     // Background compaction is currently not supported for command line runs.
     if (background_collector_type_ != foreground_collector_type_) {
       VLOG(heap) << "Disabling background compaction for non zygote";
@@ -523,6 +524,7 @@ Heap::Heap(size_t initial_size,
                                        &heap_reservation)) {
     DCHECK_EQ(heap_reservation_size, heap_reservation.IsValid() ? heap_reservation.Size() : 0u);
     DCHECK(!boot_image_spaces.empty());
+    // shengkai heap segment begin
     request_begin = boot_image_spaces.back()->GetImageHeader().GetOatFileEnd();
     DCHECK_IMPLIES(heap_reservation.IsValid(), request_begin == heap_reservation.Begin())
         << "request_begin=" << static_cast<const void*>(request_begin)
@@ -581,6 +583,7 @@ Heap::Heap(size_t initial_size,
     // address.
     DCHECK_EQ(heap_reservation.IsValid(), !boot_image_spaces_.empty());
     if (heap_reservation.IsValid()) {
+      //shengkai TODO 这里是上面loadBootImage return false的path么
       non_moving_space_mem_map = heap_reservation.RemapAtEnd(
           heap_reservation.Begin(), space_name, PROT_READ | PROT_WRITE, &error_str);
     } else {
@@ -730,8 +733,20 @@ Heap::Heap(size_t initial_size,
   // Start at 4 KB, we can be sure there are no spaces mapped this low since the address range is
   // reserved by the kernel.
   static constexpr size_t kMinHeapAddress = 4 * KB;
-  card_table_.reset(accounting::CardTable::Create(reinterpret_cast<uint8_t*>(kMinHeapAddress),
-                                                  4 * GB - kMinHeapAddress));
+  // shengkai cardtable 不支持动态大小，需要注意内存开销(TODO)
+  // 与mem_map.h中的同名常量保持一致
+// #ifdef ART_USE_32GB_HEAP_SHIFT_COMPRESSION
+//   // Use uint64_t for calculation to avoid overflow, then cast to size_t
+//   static constexpr uint64_t kMaxLowAddressSpace64 = 32ULL * GB;
+//   card_table_.reset(accounting::CardTable::Create(
+//       reinterpret_cast<uint8_t*>(kMinHeapAddress),
+//       static_cast<size_t>(kMaxLowAddressSpace64 - static_cast<uint64_t>(kMinHeapAddress))));
+// #else
+  static constexpr uint64_t kMaxLowAddressSpace = 4ULL * GB;
+  card_table_.reset(accounting::CardTable::Create(
+      reinterpret_cast<uint8_t*>(kMinHeapAddress),
+      static_cast<size_t>(kMaxLowAddressSpace - static_cast<uint64_t>(kMinHeapAddress))));
+// #endif
   CHECK(card_table_.get() != nullptr) << "Failed to create card table";
   if (foreground_collector_type_ == kCollectorTypeCC && kUseTableLookupReadBarrier) {
     rb_table_.reset(new accounting::ReadBarrierTable());

@@ -132,7 +132,9 @@ class LrtEntry {
   ObjPtr<mirror::Object> GetReference() REQUIRES_SHARED(Locks::mutator_lock_);
 
   bool IsNull() const {
-    return root_.IsNull();
+    // shengkai 用flag判断
+    // return root_.IsNull();
+    return flag_byte_ == kEntryTypeNull;
   }
 
   void SetNextFree(uint32_t next_free) REQUIRES_SHARED(Locks::mutator_lock_);
@@ -144,7 +146,9 @@ class LrtEntry {
   }
 
   bool IsFree() {
-    return (GetRawValue() & (1u << kFlagFree)) != 0u;
+    // shengkai 用flag判断
+    // return (GetRawValue() & (1u << kFlagFree)) != 0u;
+    return flag_byte_ == kEntryTypeFree;
   }
 
   void SetSerialNumber(uint32_t serial_number) REQUIRES_SHARED(Locks::mutator_lock_);
@@ -160,7 +164,9 @@ class LrtEntry {
   }
 
   bool IsSerialNumber() {
-    return (GetRawValue() & (1u << kFlagSerialNumber)) != 0u;
+    // shengkai 用flag判断
+    // return (GetRawValue() & (1u << kFlagSerialNumber)) != 0u;
+    return flag_byte_ == kEntryTypeSerialNumber;
   }
 
   GcRoot<mirror::Object>* GetRootAddress() {
@@ -194,8 +200,20 @@ class LrtEntry {
   // the current segment's top index, it's not a "serial number" or inactive entry in a CheckJNI
   // chunk, and it's not marked as "free". Such entries are never null.
   GcRoot<mirror::Object> root_;
+  // shengkai 将复用引用指针低三位的巧思移除
+  // Entry type flags stored in flag_byte_
+  enum EntryType : uint8_t {
+    kEntryTypeReference = 0,      // Valid object reference
+    kEntryTypeFree = 1,            // Free entry
+    kEntryTypeSerialNumber = 2,    // CheckJNI serial number entry
+    kEntryTypeNull = 3,            // Null entry (unused, above top_index)
+  };
+  uint8_t flag_byte_;  // 0: reference, 1: free, 2: serial number, 3: null
 };
-static_assert(sizeof(LrtEntry) == sizeof(mirror::CompressedReference<mirror::Object>));
+// static_assert(sizeof(LrtEntry) == sizeof(mirror::CompressedReference<mirror::Object>));
+// shengkai datastructure has changed, from 4 bytes to 8 bytes
+static_assert(sizeof(LrtEntry) == 8, "LrtEntry must be 8 bytes (4 bytes root + 1 byte flag + 3 bytes padding)");
+static_assert(alignof(LrtEntry) == 4, "LrtEntry must be 4-byte aligned");
 // Assert that the low bits of an `LrtEntry*` are sufficient for encoding the reference kind.
 static_assert(enum_cast<uint32_t>(IndirectRefKind::kLastKind) < alignof(LrtEntry));
 

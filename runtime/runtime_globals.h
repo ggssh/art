@@ -172,6 +172,11 @@ static constexpr bool kDefaultMustRelocate = true;
 // Size of a heap reference.
 static constexpr size_t kHeapReferenceSize = sizeof(uint32_t);
 
+// Runtime flag for 32GB heap shift compression.
+// This flag is set during Runtime::Init() based on JVM options or system properties.
+// Default is false (4GB limit with direct pointer compression).
+extern bool gUse32GBHeapShiftCompression ALWAYS_HIDDEN;
+
 }  // namespace art
 
 #endif  // ART_RUNTIME_RUNTIME_GLOBALS_H_

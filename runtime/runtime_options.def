@@ -83,6 +83,7 @@ RUNTIME_OPTIONS_KEY (Unit,                LowMemoryMode)
 RUNTIME_OPTIONS_KEY (bool,                UseTLAB,                        kUseTlab)
 RUNTIME_OPTIONS_KEY (bool,                EnableHSpaceCompactForOOM,      true)
 RUNTIME_OPTIONS_KEY (bool,                UseJitCompilation,              true)
+RUNTIME_OPTIONS_KEY (bool,                Use32GBHeapShiftCompression,    false)  // -XX:Use32GBHeapShiftCompression
 RUNTIME_OPTIONS_KEY (bool,                UseProfiledJitCompilation,      false)
 RUNTIME_OPTIONS_KEY (bool,                DumpNativeStackOnSigQuit,       true)
 RUNTIME_OPTIONS_KEY (bool,                MadviseRandomAccess,            false)

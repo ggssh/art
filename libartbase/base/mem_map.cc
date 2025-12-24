@@ -267,7 +267,7 @@ void* MemMap::TryMemMapLow4GB(void* ptr,
   if (actual != MAP_FAILED) {
     // Since we didn't use MAP_FIXED the kernel may have mapped it somewhere not in the low
     // 4GB. If this is the case, unmap and retry.
-    if (reinterpret_cast<uintptr_t>(actual) + page_aligned_byte_count >= 4 * GB) {
+    if (reinterpret_cast<uintptr_t>(actual) + page_aligned_byte_count >= kMaxLowAddressSpace) {
       TargetMUnmap(actual, page_aligned_byte_count);
       actual = MAP_FAILED;
     }
@@ -1090,9 +1090,9 @@ void* MemMap::MapInternalArtLow4GBAllocator(size_t length,
   void* actual = MAP_FAILED;
 
   bool first_run = true;
-
+  // shengkai 使用宏定义参数代替硬编码4GB
   std::lock_guard<std::mutex> mu(*mem_maps_lock_);
-  for (uintptr_t ptr = next_mem_pos_; ptr < 4 * GB; ptr += GetPageSize()) {
+  for (uintptr_t ptr = next_mem_pos_; ptr < kMaxLowAddressSpace; ptr += GetPageSize()) {
     // Use gMaps as an optimization to skip over large maps.
     // Find the first map which is address > ptr.
     auto it = gMaps->upper_bound(reinterpret_cast<void*>(ptr));
@@ -1123,8 +1123,8 @@ void* MemMap::MapInternalArtLow4GBAllocator(size_t length,
       return actual;
     }
 
-    if (4U * GB - ptr < length) {
-      // Not enough memory until 4GB.
+    if (kMaxLowAddressSpace - ptr < length) {
+      // Not enough memory until kMaxLowAddressSpace.
       if (first_run) {
         // Try another time from the bottom;
         ptr = LOW_MEM_START - GetPageSize();
@@ -1184,11 +1184,12 @@ void* MemMap::MapInternal(void* addr,
 #ifdef __LP64__
   // When requesting low_4g memory and having an expectation, the requested range should fit into
   // 4GB.
+  // shengkai 用宏定义参数代替硬编码32位移位
   if (low_4gb && (
       // Start out of bounds.
-      (reinterpret_cast<uintptr_t>(addr) >> 32) != 0 ||
+      (reinterpret_cast<uintptr_t>(addr) >> kMaxLowAddressSpaceShift) != 0 ||
       // End out of bounds. For simplicity, this will fail for the last page of memory.
-      ((reinterpret_cast<uintptr_t>(addr) + length) >> 32) != 0)) {
+      ((reinterpret_cast<uintptr_t>(addr) + length) >> kMaxLowAddressSpaceShift) != 0)) {
     LOG(ERROR) << "The requested address space (" << addr << ", "
                << reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(addr) + length)
                << ") cannot fit in low_4gb";

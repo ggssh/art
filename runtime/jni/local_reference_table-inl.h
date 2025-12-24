@@ -33,6 +33,7 @@ namespace jni {
 inline void LrtEntry::SetReference(ObjPtr<mirror::Object> ref) {
   root_ = GcRoot<mirror::Object>(
       mirror::CompressedReference<mirror::Object>::FromMirrorPtr(ref.Ptr()));
+  flag_byte_ = kEntryTypeReference;  // shengkai set flag byte
   DCHECK(!IsFree());
   DCHECK(!IsSerialNumber());
 }
@@ -47,12 +48,14 @@ inline ObjPtr<mirror::Object> LrtEntry::GetReference() {
 
 inline void LrtEntry::SetNextFree(uint32_t next_free) {
   SetVRegValue(NextFreeField::Update(next_free, 1u << kFlagFree));
+  flag_byte_ = kEntryTypeFree;  // shengkai set flag byte
   DCHECK(IsFree());
   DCHECK(!IsSerialNumber());
 }
 
 inline void LrtEntry::SetSerialNumber(uint32_t serial_number) {
   SetVRegValue(SerialNumberField::Update(serial_number, 1u << kFlagSerialNumber));
+  flag_byte_ = kEntryTypeSerialNumber;  // shengkai set flag byte
   DCHECK(!IsFree());
   DCHECK(IsSerialNumber());
 }

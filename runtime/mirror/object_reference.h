@@ -97,14 +97,34 @@ class PtrCompression {
  public:
   // Compress reference to its bit representation.
   static uint32_t Compress(MirrorType* mirror_ptr) {
-    uint32_t as_bits = reinterpret_cast32<uint32_t>(mirror_ptr);
-    return kPoisonReferences ? -as_bits : as_bits;
+    //shengkai 32GB地址空间压缩3bit偏移指针
+    // 使用运行时标志控制是否启用32GB堆压缩
+    if (gUse32GBHeapShiftCompression) {
+      // 使用位移方式：直接右移3位
+      uintptr_t ptr = reinterpret_cast<uintptr_t>(mirror_ptr);
+      uint32_t compressed = static_cast<uint32_t>(ptr >> kObjectAlignmentShift);
+      return kPoisonReferences ? -compressed : compressed;
+    } else {
+      // 直接存储指针值（4GB限制）
+      uint32_t as_bits = reinterpret_cast32<uint32_t>(mirror_ptr);
+      return kPoisonReferences ? -as_bits : as_bits;
+    }
   }
 
   // Uncompress an encoded reference from its bit representation.
   static MirrorType* Decompress(uint32_t ref) {
-    uint32_t as_bits = kPoisonReferences ? -ref : ref;
-    return reinterpret_cast32<MirrorType*>(as_bits);
+    //shengkai 32GB地址空间解压缩3bit偏移指针
+    // 使用运行时标志控制是否启用32GB堆压缩
+    if (gUse32GBHeapShiftCompression) {
+      // 使用位移方式：直接左移3位
+      uint32_t as_bits = kPoisonReferences ? -ref : ref;
+      uintptr_t ptr = static_cast<uintptr_t>(as_bits) << kObjectAlignmentShift;
+      return reinterpret_cast<MirrorType*>(ptr);
+    } else {
+      // 直接返回指针值（4GB限制）
+      uint32_t as_bits = kPoisonReferences ? -ref : ref;
+      return reinterpret_cast32<MirrorType*>(as_bits);
+    }
   }
 
   // Convert an ObjPtr to a compressed reference.
