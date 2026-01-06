@@ -4236,6 +4236,14 @@ inline void ClassLinker::LoadClassHelper::LinkCode(ArtMethodData* method,
   }
   method->entrypoint =
       runtime_->GetInstrumentation()->GetInitialEntrypoint(access_flags, quick_code);
+  
+  if (runtime_->GetInstrumentation()->IsForcedInterpretOnly()) {
+    std::string entry_type = runtime_->GetInstrumentation()->EntryPointString(method->entrypoint);
+    LOG(INFO) << "[YYZ] LinkCode:" 
+              << " entrypoint=" << method->entrypoint 
+              << " entrypoint_type=" << entry_type
+              << " (should be forced interpret only)";
+  }
 
   if (ArtMethod::IsNative(access_flags)) {
     // Set up the dlsym lookup stub. Do not go through `UnregisterNative()`

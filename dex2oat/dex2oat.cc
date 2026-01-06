@@ -3105,6 +3105,11 @@ static dex2oat::ReturnCode DoCompilation(Dex2Oat& dex2oat) REQUIRES(!Locks::muta
 static dex2oat::ReturnCode Dex2oat(int argc, char** argv) {
   TimingLogger timings("compiler", false, false);
 
+  // print argv
+  for (int i = 0; i < argc; i++) {
+    LOG(INFO) << "argv[" << i << "] = " << argv[i];
+  }
+
   // Allocate `dex2oat` on the heap instead of on the stack, as Clang
   // might produce a stack frame too large for this function or for
   // functions inlining it (such as main), that would not fit the

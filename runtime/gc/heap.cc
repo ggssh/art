@@ -473,6 +473,13 @@ Heap::Heap(size_t initial_size,
       background_collector_type_ = foreground_collector_type_;
     }
   }
+  if (runtime->GetInstrumentation()->IsForcedInterpretOnly()) {
+    LOG(INFO) << "[YYZ] Forced Interpret Only, skip oat";
+    bool jit_disabled = !runtime->UseJitCompilation();
+    LOG(INFO) << "[YYZ] Jit disabled: " << (jit_disabled ? "true" : "false");
+  } else {
+    LOG(INFO) << "[YYZ] Not Forced Interpret Only, do oat";
+  }
   ChangeCollector(desired_collector_type_);
   live_bitmap_.reset(new accounting::HeapBitmap(this));
   mark_bitmap_.reset(new accounting::HeapBitmap(this));
@@ -4722,6 +4729,14 @@ void Heap::PostForkChildAction(Thread* self) {
   if (gUseUserfaultfd) {
     DCHECK_NE(mark_compact_, nullptr);
     mark_compact_->CreateUserfaultfd(/*post_fork*/true);
+  }
+
+  if (Runtime::Current()->GetInstrumentation()->IsForcedInterpretOnly()) {
+    LOG(INFO) << "[YYZ] Forced Interpret Only, skip oat";
+    bool jit_disabled = !Runtime::Current()->UseJitCompilation();
+    LOG(INFO) << "[YYZ] Jit disabled: " << (jit_disabled ? "true" : "false");
+  } else {
+    LOG(INFO) << "[YYZ] Not Forced Interpret Only, do oat";
   }
 
   // Temporarily increase target_footprint_ and concurrent_start_bytes_ to

@@ -285,6 +285,16 @@ static void UpdateEntryPoints(ArtMethod* method, const void* new_code)
     return;
   }
 
+  // yizhe: get entry point type
+  if (Runtime::Current()->GetInstrumentation()->IsForcedInterpretOnly()) {
+    std::string old_type = Runtime::Current()->GetInstrumentation()->EntryPointString(current_entry_point);
+    std::string new_type = Runtime::Current()->GetInstrumentation()->EntryPointString(new_code);
+    LOG(INFO) << "[YYZ] UpdateEntryPoints:" 
+              << " old_entry=" << current_entry_point << " (" << old_type << ")"
+              << " -> new_entry=" << new_code << " (" << new_type << ")"
+              << " (should be forced interpret only)";
+  }
+
   // Do an atomic exchange to avoid potentially unregistering JIT code twice.
   MemberOffset offset = ArtMethod::EntryPointFromQuickCompiledCodeOffset(kRuntimePointerSize);
   uintptr_t old_value = reinterpret_cast<uintptr_t>(current_entry_point);

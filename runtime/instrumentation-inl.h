@@ -38,6 +38,11 @@ inline bool Instrumentation::CanUseAotCode(const void* quick_code) {
     return false;
   }
 
+  if (runtime->GetInstrumentation()->IsForcedInterpretOnly()) {
+    LOG(INFO) << "[YYZ] Forced Interpret Only, skip AOT code";
+    return false;
+  }
+
   if (runtime->IsNativeDebuggable()) {
     DCHECK(runtime->UseJitCompilation() && runtime->GetJit()->JitAtFirstUse());
     // If we are doing native debugging, ignore application's AOT code,
@@ -47,7 +52,6 @@ inline bool Instrumentation::CanUseAotCode(const void* quick_code) {
     // startup performance impact.
     return runtime->GetHeap()->IsInBootImageOatFile(quick_code);
   }
-
   return true;
 }
 
@@ -65,13 +69,19 @@ inline const void* Instrumentation::GetInitialEntrypoint(uint32_t method_access_
     // Note: This mimics the logic in image_writer.cc that installs the resolution stub only
     // if we have compiled code or we can execute nterp, and the method needs a class
     // initialization check.
-    return (aot_code != nullptr || ArtMethod::IsNative(method_access_flags))
+    if (Runtime::Current()->GetInstrumentation()->IsForcedInterpretOnly()) {
+      LOG(INFO) << "[YYZ] Forced Interpret Only, returning interpreter bridge for clinit check";
+      return GetQuickToInterpreterBridge();
+    } else {
+      return (aot_code != nullptr || ArtMethod::IsNative(method_access_flags))
         ? GetQuickResolutionStub()
         : GetQuickToInterpreterBridge();
+    }
   }
 
   // Use the provided AOT code if possible.
   if (CanUseAotCode(aot_code)) {
+    LOG(INFO) << "[YYZ] Using AOT code for method";
     return aot_code;
   }
 

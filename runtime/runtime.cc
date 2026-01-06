@@ -1747,9 +1747,12 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
 
   fingerprint_ = runtime_options.ReleaseOrDefault(Opt::Fingerprint);
 
-  if (runtime_options.GetOrDefault(Opt::Interpret)) {
-    GetInstrumentation()->ForceInterpretOnly();
-  }
+  GetInstrumentation()->ForceInterpretOnly();
+
+  // yizhe: read property from system property, if the property is set to true, then force interpret only
+  // if (runtime_options.GetOrDefault(Opt::Interpret)) {
+  //   GetInstrumentation()->ForceInterpretOnly();
+  // }
 
   zygote_max_failed_boots_ = runtime_options.GetOrDefault(Opt::ZygoteMaxFailedBoots);
   experimental_flags_ = runtime_options.GetOrDefault(Opt::Experimental);
@@ -1882,6 +1885,10 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
     jit_options_->SetUseJitCompilation(false);
     jit_options_->SetSaveProfilingInfo(false);
   }
+
+  // yizhe: set jit compilation to false
+  jit_options_->SetUseJitCompilation(false);
+  jit_options_->SetSaveProfilingInfo(false);
 
   // Use MemMap arena pool for jit, malloc otherwise. Malloc arenas are faster to allocate but
   // can't be trimmed as easily.
