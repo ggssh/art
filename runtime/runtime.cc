@@ -213,7 +213,8 @@ PageSize gPageSize ALWAYS_HIDDEN;
 
 // Runtime flag for 32GB heap shift compression.
 // Default is false (4GB limit with direct pointer compression).
-bool gUse32GBHeapShiftCompression ALWAYS_HIDDEN = false;
+EXPORT bool gUse32GBHeapShiftCompression = false;
+EXPORT bool gYYZDebug = false;
 
 Runtime* Runtime::instance_ = nullptr;
 
@@ -1581,6 +1582,7 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
 
   // Initialize 32GB heap shift compression flag from JVM option.
   gUse32GBHeapShiftCompression = runtime_options.GetOrDefault(Opt::Use32GBHeapShiftCompression);
+  gYYZDebug = runtime_options.GetOrDefault(Opt::YYZDebug);
 
   deny_art_apex_data_files_ = runtime_options.Exists(Opt::DenyArtApexDataFiles);
   if (deny_art_apex_data_files_) {

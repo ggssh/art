@@ -28,8 +28,10 @@
 #include "interpreter/interpreter_cache-inl.h"
 #include "interpreter/interpreter_common.h"
 #include "interpreter/shadow_frame-inl.h"
+#include "mirror/object_reference.h"
 #include "mirror/string-alloc-inl.h"
 #include "nterp_helpers.h"
+#include "runtime_globals.h"
 
 namespace art HIDDEN {
 namespace interpreter {
@@ -496,7 +498,22 @@ static ArtField* FindFieldFast(ArtMethod* caller,
   }
 
   if (!kStatic) {
-    mirror::Object* obj = reinterpret_cast32<mirror::Object*>(registers[inst->VRegB_22c()]);
+    mirror::Object* obj = nullptr;
+    uint32_t obj_vreg_value = registers[inst->VRegB_22c()];
+    if (gUse32GBHeapShiftCompression) {
+      // if (gYYZDebug) {
+      //   LOG(INFO) << "YYZ FindFieldFast(gUse32GBHeapShiftCompression=true)";
+      // }
+      // In 32GB compression mode, registers store compressed values (ptr >> 3),
+      // so we need to decompress before using as a pointer.
+      obj = mirror::PtrCompression<false, mirror::Object>::Decompress(obj_vreg_value);
+    } else {
+      // if (gYYZDebug) {
+      //   LOG(INFO) << "YYZ FindFieldFast(gUse32GBHeapShiftCompression=false)";
+      // }
+      // Original logic: registers store uncompressed pointer values (4GB limit)
+      obj = reinterpret_cast32<mirror::Object*>(obj_vreg_value);
+    }
     if (obj != nullptr) {
       mirror::Class* obj_cls = obj->GetClass();
       if (obj_cls->GetDexTypeIndex() == field_id.class_idx_ &&

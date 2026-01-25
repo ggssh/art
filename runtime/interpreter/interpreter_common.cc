@@ -48,6 +48,8 @@
 #include "mirror/method_handle_impl-inl.h"
 #include "mirror/method_type-inl.h"
 #include "mirror/object.h"
+#include "mirror/object_reference.h"
+#include "runtime_globals.h"
 #include "mirror/object_array-alloc-inl.h"
 #include "mirror/object_array-inl.h"
 #include "mirror/object_array.h"
@@ -1142,7 +1144,31 @@ static inline void AssignRegister(ShadowFrame* new_shadow_frame, const ShadowFra
   // If both register locations contains the same value, the register probably holds a reference.
   // Note: As an optimization, non-moving collectors leave a stale reference value
   // in the references array even after the original vreg was overwritten to a non-reference.
-  if (src_value == reinterpret_cast32<uint32_t>(o.Ptr())) {
+  bool is_reference = false;
+  
+  if (gUse32GBHeapShiftCompression) {
+    // if (gYYZDebug) {
+    //   LOG(INFO) << "YYZ AssignRegister(gUse32GBHeapShiftCompression=true)";
+    // }
+    // When 32GB heap shift compression is enabled, vregs_ stores compressed values (ptr >> 3),
+    // so we need to compare with the compressed value of the pointer, not the uncompressed pointer value.
+    if (o != nullptr) {
+      // Compress the pointer value to compare with src_value stored in vregs_
+      uint32_t compressed_ptr = mirror::PtrCompression<false, mirror::Object>::Compress(o.Ptr());
+      is_reference = (src_value == compressed_ptr);
+    } else {
+      // If o is null, check if src_value is also 0 (null reference)
+      is_reference = (src_value == 0);
+    }
+  } else {
+    // if (gYYZDebug) {
+    //   LOG(INFO) << "YYZ AssignRegister(gUse32GBHeapShiftCompression=false)";
+    // }
+    // Original logic: compare with uncompressed pointer value (works for 4GB limit)
+    is_reference = (src_value == reinterpret_cast32<uint32_t>(o.Ptr()));
+  }
+
+  if (is_reference) {
     new_shadow_frame->SetVRegReference(dest_reg, o);
   } else {
     new_shadow_frame->SetVReg(dest_reg, src_value);

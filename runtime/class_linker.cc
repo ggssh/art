@@ -685,6 +685,7 @@ ObjPtr<mirror::IfTable> AllocIfTable(Thread* self,
 bool ClassLinker::InitWithoutImage(std::vector<std::unique_ptr<const DexFile>> boot_class_path,
                                    std::string* error_msg) {
   VLOG(startup) << "ClassLinker::Init";
+  LOG(INFO) << "ClassLinker::InitWithoutImage";
 
   Thread* const self = Thread::Current();
   Runtime* const runtime = Runtime::Current();

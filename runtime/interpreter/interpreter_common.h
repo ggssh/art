@@ -176,6 +176,25 @@ static ALWAYS_INLINE bool DoInvoke(Thread* self,
   const uint32_t vregC = is_range ? inst->VRegC_3rc() : inst->VRegC_35c();
   ObjPtr<mirror::Object> obj = type == kStatic ? nullptr : shadow_frame.GetVRegReference(vregC);
   ArtMethod* sf_method = shadow_frame.GetMethod();
+  
+  // std::string target_class_name;
+  // if (obj != nullptr) {
+  //   target_class_name = obj->GetClass()->PrettyDescriptor();
+  // } else if (type != kStatic) {
+  //   const DexFile* dex_file = sf_method->GetDexFile();
+  //   uint32_t method_idx = inst->VRegB();
+  //   const dex::MethodId& method_id = dex_file->GetMethodId(method_idx);
+  //   target_class_name = dex_file->PrettyType(method_id.class_idx_);
+  // } else {
+  //   target_class_name = "Static_Method_Call";
+  // }
+
+  // LOG(INFO) << "YYZ DoInvoke: obj address: " << static_cast<const void*>(obj.Ptr())
+  //           << ", Class: " << target_class_name
+  //           << ", Method: " << sf_method->PrettyMethod()
+  //           << ", VRegC: " << vregC
+  //           << "(" << (is_range ? "VRegC_3rc" : "VRegC_35c") << ")";
+
   bool string_init = false;
   ArtMethod* called_method = FindMethodToCall<type>(
       self, sf_method, &obj, *inst, /* only_lookup_tls_cache= */ false, &string_init);

@@ -519,6 +519,7 @@ ArtMethod* FindMethodToCall(Thread* self,
                             bool only_lookup_tls_cache,
                             /*out*/ bool* string_init)
     REQUIRES_SHARED(Locks::mutator_lock_) {
+  // LOG(INFO) << "YYZ FindMethodToCall";
   PointerSize pointer_size = Runtime::Current()->GetClassLinker()->GetImagePointerSize();
 
   // Try to find the method in thread-local cache.
@@ -549,6 +550,11 @@ ArtMethod* FindMethodToCall(Thread* self,
       // Maintain interpreter-like semantics where NullPointerException is thrown
       // after potential NoSuchMethodError from class linker.
       const uint32_t method_idx = inst.VRegB();
+
+      auto dex_file = caller->GetDexFile();
+      auto method_name = dex_file->PrettyMethod(method_idx);
+      LOG(INFO) << "YYZ ThrowNullPointerExceptionForMethodAccess, " << method_idx << ", " << method_name << ", caller: " << caller->PrettyMethod();
+
       ThrowNullPointerExceptionForMethodAccess(method_idx, type);
       return nullptr;
     }
