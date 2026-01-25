@@ -55,7 +55,13 @@ inline uintptr_t ObjPtr<MirrorType>::Encode(MirrorType* ptr) {
   uintptr_t ref = reinterpret_cast<uintptr_t>(ptr);
   DCHECK_ALIGNED(ref, kObjectAlignment);
   if (kObjPtrPoisoning && ref != 0) {
-    DCHECK_LE(ref, 0xFFFFFFFFU);
+#ifdef __LP64__
+    uintptr_t max_addr = gUse32GBHeapShiftCompression ? 0x7FFFFFFFFULL : 0xFFFFFFFFULL;
+#else
+    // On 32-bit systems, only 4GB address space is supported
+    uintptr_t max_addr = 0xFFFFFFFFU;
+#endif
+    DCHECK_LE(ref, max_addr);
     ref >>= kObjectAlignmentShift;
     // Put cookie in high bits.
     ref |= GetCurrentTrimedCookie() << kCookieShift;

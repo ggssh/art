@@ -32,6 +32,7 @@
 #include "gc/heap.h"
 #include "mirror/object-readbarrier-inl.h"
 #include "oat/image.h"
+#include "runtime_globals.h"
 #include "scoped_thread_state_change-inl.h"
 #include "space-inl.h"
 #include "thread-current-inl.h"
@@ -371,10 +372,11 @@ FreeListSpace* FreeListSpace::Create(const std::string& name, size_t size) {
          "runtime page size";
   std::string error_msg;
   MemMap mem_map = MemMap::MapAnonymous(name.c_str(),
-                                        size,
-                                        PROT_READ | PROT_WRITE,
-                                        /*low_4gb=*/true,
-                                        &error_msg);
+                                       size,
+                                       PROT_READ | PROT_WRITE,
+                                       /*low_4gb=*/true,
+                                       &error_msg,
+                                       /* use_32gb= */ gUse32GBHeapShiftCompression);
   CHECK(mem_map.IsValid()) << "Failed to allocate large object space mem map: " << error_msg;
   return new FreeListSpace(name, std::move(mem_map), mem_map.Begin(), mem_map.End());
 }

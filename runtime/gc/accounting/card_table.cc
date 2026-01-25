@@ -26,6 +26,7 @@
 #include "gc/space/space.h"
 #include "heap_bitmap.h"
 #include "runtime.h"
+#include "runtime_globals.h"
 
 namespace art HIDDEN {
 namespace gc {
@@ -63,7 +64,8 @@ CardTable* CardTable::Create(const uint8_t* heap_begin, size_t heap_capacity) {
                                         capacity + 256,
                                         PROT_READ | PROT_WRITE,
                                         /*low_4gb=*/ false,
-                                        &error_msg);
+                                        &error_msg,
+                                        /* use_32gb= */ gUse32GBHeapShiftCompression);
   CHECK(mem_map.IsValid()) << "couldn't allocate card table: " << error_msg;
   // All zeros is the correct initial value; all clean. Anonymous mmaps are initialized to zero, we
   // don't clear the card table to avoid unnecessary pages being allocated

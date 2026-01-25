@@ -1581,7 +1581,12 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
   ReloadAllFlags(__FUNCTION__);
 
   // Initialize 32GB heap shift compression flag from JVM option.
-  gUse32GBHeapShiftCompression = runtime_options.GetOrDefault(Opt::Use32GBHeapShiftCompression);
+  bool option_exists = runtime_options.Exists(Opt::Use32GBHeapShiftCompression);
+  bool option_value = runtime_options.GetOrDefault(Opt::Use32GBHeapShiftCompression);
+  gUse32GBHeapShiftCompression = option_value;
+  // LOG(INFO) << "Runtime::Init: Use32GBHeapShiftCompression option exists = " << option_exists
+  //           << ", parsed value = " << option_value
+  //           << ", gUse32GBHeapShiftCompression = " << gUse32GBHeapShiftCompression;
   gYYZDebug = runtime_options.GetOrDefault(Opt::YYZDebug);
 
   deny_art_apex_data_files_ = runtime_options.Exists(Opt::DenyArtApexDataFiles);
@@ -1618,7 +1623,9 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
                                                  /*low_4gb=*/ true,
                                                  /*reuse=*/ false,
                                                  /*reservation=*/ nullptr,
-                                                 /*error_msg=*/ nullptr);
+                                                 /*error_msg=*/ nullptr,
+                                                 /* use_debug_name= */ true,
+                                                 /* use_32gb= */ gUse32GBHeapShiftCompression);
     if (!protected_fault_page_.IsValid()) {
       LOG(WARNING) << "Could not reserve sentinel fault page";
     } else if (reinterpret_cast<uintptr_t>(protected_fault_page_.Begin()) != sentinel_addr) {

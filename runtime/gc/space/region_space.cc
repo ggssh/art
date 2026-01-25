@@ -22,6 +22,7 @@
 #include "gc/accounting/read_barrier_table.h"
 #include "mirror/class-inl.h"
 #include "mirror/object-inl.h"
+#include "runtime_globals.h"
 #include "thread_list.h"
 
 namespace art HIDDEN {
@@ -63,7 +64,9 @@ MemMap RegionSpace::CreateMemMap(const std::string& name,
                                    /*low_4gb=*/ true,
                                    /*reuse=*/ false,
                                    /*reservation=*/ nullptr,
-                                   &error_msg);
+                                   &error_msg,
+                                   /* use_debug_name= */ true,
+                                   /* use_32gb= */ gUse32GBHeapShiftCompression);
     if (mem_map.IsValid() || requested_begin == nullptr) {
       break;
     }

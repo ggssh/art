@@ -67,6 +67,7 @@
 #include "oat/oat_file.h"
 #include "profile/profile_compilation_info.h"
 #include "runtime.h"
+#include "runtime_globals.h"
 #include "space-inl.h"
 
 namespace art HIDDEN {
@@ -1019,7 +1020,8 @@ class ImageSpace::Loader {
           image_filename,
           /*reuse=*/false,
           image_reservation,
-          error_msg);
+          error_msg,
+          /*use_32gb=*/gUse32GBHeapShiftCompression);
       if (map.IsValid()) {
         Runtime::MadviseFileForRange(
             madvise_size_limit, map.Size(), map.Begin(), map.End(), image_filename);
@@ -1036,7 +1038,8 @@ class ImageSpace::Loader {
                                       PROT_READ | PROT_WRITE,
                                       /*low_4gb=*/ true,
                                       image_reservation,
-                                      error_msg);
+                                      error_msg,
+                                      /* use_32gb= */ gUse32GBHeapShiftCompression);
     if (map.IsValid()) {
       const size_t stored_size = image_header.GetDataSize();
       MemMap temp_map = MemMap::MapFile(sizeof(ImageHeader) + stored_size,

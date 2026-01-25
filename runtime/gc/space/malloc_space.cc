@@ -29,6 +29,7 @@
 #include "gc/space/space-inl.h"
 #include "gc/space/zygote_space.h"
 #include "handle_scope-inl.h"
+#include "runtime_globals.h"
 #include "mirror/class-inl.h"
 #include "mirror/object-inl.h"
 #include "runtime.h"
@@ -110,7 +111,8 @@ MemMap MallocSpace::CreateMemMap(const std::string& name,
                                         *capacity,
                                         PROT_READ | PROT_WRITE,
                                         /*low_4gb=*/ true,
-                                        &error_msg);
+                                        &error_msg,
+                                        /* use_32gb= */ gUse32GBHeapShiftCompression);
   if (!mem_map.IsValid()) {
     LOG(ERROR) << "Failed to allocate pages for alloc space (" << name << ") of size "
                << PrettySize(*capacity) << ": " << error_msg;

@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <iomanip>
 #include <limits>
 #include <memory>
 #include <random>
@@ -42,7 +43,9 @@
 #include "base/stl_util.h"
 #include "base/systrace.h"
 #include "base/time_utils.h"
+#include "base/mem_map.h"
 #include "base/utils.h"
+#include "base/globals.h"
 #include "class_root-inl.h"
 #include "common_throws.h"
 #include "debugger.h"
@@ -438,6 +441,17 @@ Heap::Heap(size_t initial_size,
   }
 
   LOG(INFO) << "Using " << foreground_collector_type_ << " GC.";
+  
+  // Adjust capacity for 32GB heap mode
+  if (gUse32GBHeapShiftCompression) {
+    const size_t target_capacity = 8 * GB;
+    if (capacity_ < target_capacity) {
+      LOG(INFO) << "32GB heap mode enabled: adjusting capacity from " 
+                << PrettySize(capacity_) << " to " << PrettySize(target_capacity);
+      capacity_ = target_capacity;
+    }
+  }
+  
   if (gUseUserfaultfd) {
     CHECK_EQ(foreground_collector_type_, kCollectorTypeCMC);
     CHECK_EQ(background_collector_type_, kCollectorTypeCMCBackground);
@@ -616,7 +630,9 @@ Heap::Heap(size_t initial_size,
           /* low_4gb= */ true,
           /* reuse= */ false,
           heap_reservation.IsValid() ? &heap_reservation : nullptr,
-          &error_str);
+          &error_str,
+          /* use_debug_name= */ true,
+          /* use_32gb= */ gUse32GBHeapShiftCompression);
     }
     CHECK(main_mem_map_1.IsValid()) << error_str;
     DCHECK(!heap_reservation.IsValid());
@@ -733,20 +749,11 @@ Heap::Heap(size_t initial_size,
   // Start at 4 KB, we can be sure there are no spaces mapped this low since the address range is
   // reserved by the kernel.
   static constexpr size_t kMinHeapAddress = 4 * KB;
-  // shengkai cardtable 不支持动态大小，需要注意内存开销(TODO)
-  // 与mem_map.h中的同名常量保持一致
-// #ifdef ART_USE_32GB_HEAP_SHIFT_COMPRESSION
-//   // Use uint64_t for calculation to avoid overflow, then cast to size_t
-//   static constexpr uint64_t kMaxLowAddressSpace64 = 32ULL * GB;
-//   card_table_.reset(accounting::CardTable::Create(
-//       reinterpret_cast<uint8_t*>(kMinHeapAddress),
-//       static_cast<size_t>(kMaxLowAddressSpace64 - static_cast<uint64_t>(kMinHeapAddress))));
-// #else
-  static constexpr uint64_t kMaxLowAddressSpace = 4ULL * GB;
+  // Keep consistent with functions in mem_map.h, use runtime dynamic calculation
+  uint64_t max_addr_space = static_cast<uint64_t>(GetMaxLowAddressSpace(gUse32GBHeapShiftCompression));
   card_table_.reset(accounting::CardTable::Create(
       reinterpret_cast<uint8_t*>(kMinHeapAddress),
-      static_cast<size_t>(kMaxLowAddressSpace - static_cast<uint64_t>(kMinHeapAddress))));
-// #endif
+      static_cast<size_t>(max_addr_space - static_cast<uint64_t>(kMinHeapAddress))));
   CHECK(card_table_.get() != nullptr) << "Failed to create card table";
   if (foreground_collector_type_ == kCollectorTypeCC && kUseTableLookupReadBarrier) {
     rb_table_.reset(new accounting::ReadBarrierTable());
@@ -824,6 +831,12 @@ Heap::Heap(size_t initial_size,
     heap_sampler_.DisableHeapSampler();
   }
 
+  if (gYYZDebug) {
+    // Print /proc/self/smaps for debugging
+    LOG(INFO) << "=== /proc/self/smaps ===";
+    PrintFileToLog("/proc/self/smaps", LogSeverity::INFO);
+    LOG(INFO) << "=== End /proc/self/smaps ===";
+  }
   instrumentation::Instrumentation* const instrumentation = runtime->GetInstrumentation();
   if (gc_stress_mode_) {
     backtrace_lock_ = new Mutex("GC complete lock");
@@ -905,7 +918,9 @@ MemMap Heap::MapAnonymousPreferredAddress(const char* name,
                                       /*low_4gb=*/ true,
                                       /*reuse=*/ false,
                                       /*reservation=*/ nullptr,
-                                      out_error_str);
+                                      out_error_str,
+                                      /* use_debug_name= */ true,
+                                      /* use_32gb= */ gUse32GBHeapShiftCompression);
     if (map.IsValid() || request_begin == nullptr) {
       return map;
     }

@@ -27,6 +27,7 @@
 #include "mirror/class-inl.h"
 #include "mirror/object-inl.h"
 #include "mirror/object_array.h"
+#include "runtime_globals.h"
 
 namespace art HIDDEN {
 namespace gc {
@@ -87,10 +88,11 @@ SpaceBitmap<kAlignment> SpaceBitmap<kAlignment>::Create(
   const size_t bitmap_size = ComputeBitmapSize(heap_capacity);
   std::string error_msg;
   MemMap mem_map = MemMap::MapAnonymous(name.c_str(),
-                                        bitmap_size,
-                                        PROT_READ | PROT_WRITE,
-                                        /*low_4gb=*/ false,
-                                        &error_msg);
+                                       bitmap_size,
+                                       PROT_READ | PROT_WRITE,
+                                       /*low_4gb=*/ false,
+                                       &error_msg,
+                                       /* use_32gb= */ gUse32GBHeapShiftCompression);
   if (UNLIKELY(!mem_map.IsValid())) {
     LOG(ERROR) << "Failed to allocate bitmap " << name << ": " << error_msg;
     return SpaceBitmap<kAlignment>();

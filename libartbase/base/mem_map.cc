@@ -17,6 +17,8 @@
 #include "mem_map.h"
 
 #include <inttypes.h>
+#include <limits.h>
+#include <stdint.h>
 #include <stdlib.h>
 #if !defined(ANDROID_OS) && !defined(__Fuchsia__) && !defined(_WIN32)
 #include <sys/resource.h>
@@ -267,7 +269,28 @@ void* MemMap::TryMemMapLow4GB(void* ptr,
   if (actual != MAP_FAILED) {
     // Since we didn't use MAP_FIXED the kernel may have mapped it somewhere not in the low
     // 4GB. If this is the case, unmap and retry.
-    if (reinterpret_cast<uintptr_t>(actual) + page_aligned_byte_count >= kMaxLowAddressSpace) {
+    size_t max_addr_space = GetMaxLowAddressSpace(false);  // 4GB mode
+    if (reinterpret_cast<uintptr_t>(actual) + page_aligned_byte_count >= max_addr_space) {
+      TargetMUnmap(actual, page_aligned_byte_count);
+      actual = MAP_FAILED;
+    }
+  }
+  return actual;
+}
+
+// Try to map memory in 32GB address space
+void* MemMap::TryMemMap32GB(void* ptr,
+                            size_t page_aligned_byte_count,
+                            int prot,
+                            int flags,
+                            int fd,
+                            off_t offset) {
+  void* actual = TargetMMap(ptr, page_aligned_byte_count, prot, flags, fd, offset);
+  if (actual != MAP_FAILED) {
+    // Since we didn't use MAP_FIXED the kernel may have mapped it somewhere not in the low
+    // 32GB. If this is the case, unmap and retry.
+    size_t max_addr_space = GetMaxLowAddressSpace(true);  // 32GB mode
+    if (reinterpret_cast<uintptr_t>(actual) + page_aligned_byte_count >= max_addr_space) {
       TargetMUnmap(actual, page_aligned_byte_count);
       actual = MAP_FAILED;
     }
@@ -311,9 +334,11 @@ MemMap MemMap::MapAnonymous(const char* name,
                             bool reuse,
                             /*inout*/MemMap* reservation,
                             /*out*/std::string* error_msg,
-                            bool use_debug_name) {
+                            bool use_debug_name,
+                            bool use_32gb) {
 #ifndef __LP64__
   UNUSED(low_4gb);
+  UNUSED(use_32gb);
 #endif
   if (byte_count == 0) {
     *error_msg = "Empty MemMap requested.";
@@ -353,12 +378,12 @@ MemMap MemMap::MapAnonymous(const char* name,
   // Therefore, non-null 'addr' still behaves as hint-only as far as ART api is concerned.
   if ((flags & MAP_FIXED) == 0 && addr != nullptr && IsKernelVersionAtLeast(4, 17)) {
     actual = MapInternal(
-        addr, page_aligned_byte_count, prot, flags | MAP_FIXED_NOREPLACE, fd.get(), 0, low_4gb);
+        addr, page_aligned_byte_count, prot, flags | MAP_FIXED_NOREPLACE, fd.get(), 0, low_4gb, use_32gb);
   }
 #endif  // __linux__
 
   if (actual == nullptr || actual == MAP_FAILED) {
-    actual = MapInternal(addr, page_aligned_byte_count, prot, flags, fd.get(), 0, low_4gb);
+    actual = MapInternal(addr, page_aligned_byte_count, prot, flags, fd.get(), 0, low_4gb, use_32gb);
   }
   saved_errno = errno;
 
@@ -527,7 +552,8 @@ MemMap MemMap::MapFileAtAddress(uint8_t* expected_ptr,
                                 const char* filename,
                                 bool reuse,
                                 /*inout*/MemMap* reservation,
-                                /*out*/std::string* error_msg) {
+                                /*out*/std::string* error_msg,
+                                bool use_32gb) {
   CHECK_NE(0, prot);
   CHECK_NE(0, flags & (MAP_SHARED | MAP_PRIVATE));
 
@@ -579,7 +605,8 @@ MemMap MemMap::MapFileAtAddress(uint8_t* expected_ptr,
                                                            flags,
                                                            fd,
                                                            page_aligned_offset,
-                                                           low_4gb));
+                                                           low_4gb,
+                                                           use_32gb));
   if (actual == MAP_FAILED) {
     if (error_msg != nullptr) {
       auto saved_errno = errno;
@@ -1090,9 +1117,9 @@ void* MemMap::MapInternalArtLow4GBAllocator(size_t length,
   void* actual = MAP_FAILED;
 
   bool first_run = true;
-  // shengkai 使用宏定义参数代替硬编码4GB
   std::lock_guard<std::mutex> mu(*mem_maps_lock_);
-  for (uintptr_t ptr = next_mem_pos_; ptr < kMaxLowAddressSpace; ptr += GetPageSize()) {
+  size_t max_addr_space = GetMaxLowAddressSpace(false);  // 4GB mode
+  for (uintptr_t ptr = next_mem_pos_; ptr < max_addr_space; ptr += GetPageSize()) {
     // Use gMaps as an optimization to skip over large maps.
     // Find the first map which is address > ptr.
     auto it = gMaps->upper_bound(reinterpret_cast<void*>(ptr));
@@ -1123,8 +1150,8 @@ void* MemMap::MapInternalArtLow4GBAllocator(size_t length,
       return actual;
     }
 
-    if (kMaxLowAddressSpace - ptr < length) {
-      // Not enough memory until kMaxLowAddressSpace.
+    if (max_addr_space - ptr < length) {
+      // Not enough memory until max_addr_space.
       if (first_run) {
         // Try another time from the bottom;
         ptr = LOW_MEM_START - GetPageSize();
@@ -1174,29 +1201,138 @@ void* MemMap::MapInternalArtLow4GBAllocator(size_t length,
 #endif
 }
 
+// 32GB address space allocator for heap memory mapping
+void* MemMap::MapInternalArt32GBAllocator(size_t length,
+                                          int prot,
+                                          int flags,
+                                          int fd,
+                                          off_t offset) {
+#if USE_ART_LOW_4G_ALLOCATOR
+  void* actual = MAP_FAILED;
+
+  bool first_run = true;
+  std::lock_guard<std::mutex> mu(*mem_maps_lock_);
+  size_t max_addr_space = GetMaxLowAddressSpace(true);  // 32GB mode
+  for (uintptr_t ptr = next_mem_pos_; ptr < max_addr_space; ptr += GetPageSize()) {
+    // Use gMaps as an optimization to skip over large maps.
+    // Find the first map which is address > ptr.
+    auto it = gMaps->upper_bound(reinterpret_cast<void*>(ptr));
+    if (it != gMaps->begin()) {
+      auto before_it = it;
+      --before_it;
+      // Start at the end of the map before the upper bound.
+      ptr = std::max(ptr, reinterpret_cast<uintptr_t>(before_it->second->BaseEnd()));
+      CHECK_ALIGNED_PARAM(ptr, GetPageSize());
+    }
+    while (it != gMaps->end()) {
+      // How much space do we have until the next map?
+      size_t delta = reinterpret_cast<uintptr_t>(it->first) - ptr;
+      // If the space may be sufficient, break out of the loop.
+      if (delta >= length) {
+        break;
+      }
+      // Otherwise, skip to the end of the map.
+      ptr = reinterpret_cast<uintptr_t>(it->second->BaseEnd());
+      CHECK_ALIGNED_PARAM(ptr, GetPageSize());
+      ++it;
+    }
+
+    // Try to see if we get lucky with this address since none of the ART maps overlap.
+    actual = TryMemMap32GB(reinterpret_cast<void*>(ptr), length, prot, flags, fd, offset);
+    if (actual != MAP_FAILED) {
+      next_mem_pos_ = reinterpret_cast<uintptr_t>(actual) + length;
+      return actual;
+    }
+
+    if (max_addr_space - ptr < length) {
+      // Not enough memory until max_addr_space.
+      if (first_run) {
+        // Try another time from the bottom;
+        ptr = LOW_MEM_START - GetPageSize();
+        first_run = false;
+        continue;
+      } else {
+        // Second try failed.
+        break;
+      }
+    }
+
+    uintptr_t tail_ptr;
+
+    // Check pages are free.
+    bool safe = true;
+    for (tail_ptr = ptr; tail_ptr < ptr + length; tail_ptr += GetPageSize()) {
+      if (msync(reinterpret_cast<void*>(tail_ptr), GetPageSize(), 0) == 0) {
+        safe = false;
+        break;
+      } else {
+        DCHECK_EQ(errno, ENOMEM);
+      }
+    }
+
+    next_mem_pos_ = tail_ptr;  // update early, as we break out when we found and mapped a region
+
+    if (safe == true) {
+      actual = TryMemMap32GB(reinterpret_cast<void*>(ptr), length, prot, flags, fd, offset);
+      if (actual != MAP_FAILED) {
+        return actual;
+      }
+    } else {
+      // Skip over last page.
+      ptr = tail_ptr;
+    }
+  }
+
+  if (actual == MAP_FAILED) {
+    LOG(ERROR) << "Could not find contiguous low-memory space (32GB mode).";
+    errno = ENOMEM;
+  }
+  return actual;
+#else
+  UNUSED(length, prot, flags, fd, offset);
+  LOG(FATAL) << "Unreachable";
+  UNREACHABLE();
+#endif
+}
+
 void* MemMap::MapInternal(void* addr,
                           size_t length,
                           int prot,
                           int flags,
                           int fd,
                           off_t offset,
-                          bool low_4gb) {
+                          bool low_4gb,
+                          bool use_32gb) {
 #ifdef __LP64__
   // When requesting low_4g memory and having an expectation, the requested range should fit into
-  // 4GB.
-  // shengkai 用宏定义参数代替硬编码32位移位
-  if (low_4gb && (
-      // Start out of bounds.
-      (reinterpret_cast<uintptr_t>(addr) >> kMaxLowAddressSpaceShift) != 0 ||
-      // End out of bounds. For simplicity, this will fail for the last page of memory.
-      ((reinterpret_cast<uintptr_t>(addr) + length) >> kMaxLowAddressSpaceShift) != 0)) {
-    LOG(ERROR) << "The requested address space (" << addr << ", "
-               << reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(addr) + length)
-               << ") cannot fit in low_4gb";
-    return MAP_FAILED;
+  // the configured address space limit.
+  if (low_4gb) {
+    size_t max_addr_space = GetMaxLowAddressSpace(use_32gb);
+    uintptr_t shift = GetMaxLowAddressSpaceShift(use_32gb);
+    uintptr_t addr_value = reinterpret_cast<uintptr_t>(addr);
+    uintptr_t end_addr = addr_value + length;
+    
+    // LOG(INFO) << "MapInternal: use_32gb = " << use_32gb
+    //           << ", GetMaxLowAddressSpace() = " << PrettySize(max_addr_space)
+    //           << ", GetMaxLowAddressSpaceShift() = " << shift
+    //           << ", requested addr = " << addr
+    //           << ", length = " << PrettySize(length)
+    //           << ", end_addr = " << reinterpret_cast<void*>(end_addr);
+    
+    // Use direct address comparison instead of shift check for better reliability
+    if (addr_value >= max_addr_space || end_addr > max_addr_space) {
+      LOG(ERROR) << "The requested address space (" << addr << ", "
+                 << reinterpret_cast<void*>(end_addr)
+                 << ") cannot fit in " << (use_32gb ? "32GB" : "4GB")
+                 << " (use_32gb=" << use_32gb
+                 << ", shift=" << shift
+                 << ", max_addr_space=" << PrettySize(max_addr_space) << ")";
+      return MAP_FAILED;
+    }
   }
 #else
   UNUSED(low_4gb);
+  UNUSED(use_32gb);
 #endif
   DCHECK_ALIGNED_PARAM(length, GetPageSize());
   // TODO:
@@ -1213,7 +1349,13 @@ void* MemMap::MapInternal(void* addr,
     // To avoid the issue, always map non-executable first, and mprotect if necessary.
     const int orig_prot = prot;
     const int prot_non_exec = prot & ~PROT_EXEC;
-    actual = MapInternalArtLow4GBAllocator(length, prot_non_exec, flags, fd, offset);
+    
+    // Choose allocator based on use_32gb parameter
+    if (use_32gb) {
+      actual = MapInternalArt32GBAllocator(length, prot_non_exec, flags, fd, offset);
+    } else {
+      actual = MapInternalArtLow4GBAllocator(length, prot_non_exec, flags, fd, offset);
+    }
 
     if (actual == MAP_FAILED) {
       return MAP_FAILED;
@@ -1228,6 +1370,13 @@ void* MemMap::MapInternal(void* addr,
         return MAP_FAILED;
       }
     }
+    // Log both requested and actual mapped address after successful mapping
+    // if (low_4gb && actual != MAP_FAILED) {
+    //   LOG(INFO) << "MapInternal: requested addr = " << addr
+    //             << ", actual mapped addr = " << actual
+    //             << ", length = " << PrettySize(length)
+    //             << ", use_32gb = " << use_32gb;
+    // }
     return actual;
   }
 
@@ -1240,6 +1389,13 @@ void* MemMap::MapInternal(void* addr,
 #endif
   actual = TargetMMap(addr, length, prot, flags, fd, offset);
 #endif
+  // Log both requested and actual mapped address after successful mapping
+  // if (low_4gb && actual != MAP_FAILED) {
+  //   LOG(INFO) << "MapInternal: requested addr = " << addr
+  //             << ", actual mapped addr = " << actual
+  //             << ", length = " << PrettySize(length)
+  //             << ", use_32gb = " << use_32gb;
+  // }
   return actual;
 }
 
@@ -1406,6 +1562,39 @@ void MemMap::AlignBy(size_t alignment, bool align_both_ends) {
   begin_ = aligned_base_begin;
   size_ = aligned_base_size;
   DCHECK(gMaps != nullptr);
+}
+
+// Get maximum low address space size at runtime
+size_t GetMaxLowAddressSpace([[maybe_unused]] bool use_32gb) {
+#ifdef __LP64__
+  // On 64-bit systems, support both 4GB and 32GB modes
+  return use_32gb ? static_cast<size_t>(32ULL * GB) : static_cast<size_t>(4ULL * GB);
+#else
+  // On 32-bit systems, only 4GB address space is supported
+  // SIZE_MAX is the maximum value that can be represented by size_t
+  // On 32-bit systems, SIZE_MAX is typically 4GB-1, which is close enough to 4GB
+  return SIZE_MAX;
+#endif
+}
+
+// Get address space shift value at runtime
+uintptr_t GetMaxLowAddressSpaceShift([[maybe_unused]] bool use_32gb) {
+#ifdef __LP64__
+  return use_32gb ? 35 : 32;
+#else
+  // On 32-bit systems, only 32-bit shift is supported
+  return 32;
+#endif
+}
+
+// Get address space mask at runtime
+uintptr_t GetMaxLowAddressSpaceMask([[maybe_unused]] bool use_32gb) {
+#ifdef __LP64__
+  return use_32gb ? 0x7FFFFFFFFULL : 0xFFFFFFFFULL;
+#else
+  // On 32-bit systems, only 32-bit mask is supported
+  return 0xFFFFFFFFU;
+#endif
 }
 
 }  // namespace art

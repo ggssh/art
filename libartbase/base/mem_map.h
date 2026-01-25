@@ -44,17 +44,16 @@ namespace art {
 #define USE_ART_LOW_4G_ALLOCATOR 0
 #endif
 
-// #ifdef ART_USE_32GB_HEAP_SHIFT_COMPRESSION
-// // 32GB地址空间支持
-// static constexpr size_t kMaxLowAddressSpace = 32ULL * GB;
-// static constexpr uintptr_t kMaxLowAddressSpaceShift = 35;  // log2(32GB)
-// static constexpr uintptr_t kMaxLowAddressSpaceMask = 0x7FFFFFFFFULL;  // 32GB - 1
-// #else
-// 原有4GB限制
-static constexpr size_t kMaxLowAddressSpace = 4ULL * GB;
-static constexpr uintptr_t kMaxLowAddressSpaceShift = 32;  // log2(4GB)
-static constexpr uintptr_t kMaxLowAddressSpaceMask = 0xFFFFFFFFULL;  // 4GB - 1
-// #endif
+// Forward declaration removed - using parameter passing instead
+
+// Get maximum low address space size at runtime
+size_t GetMaxLowAddressSpace([[maybe_unused]] bool use_32gb = false);
+
+// Get address space shift value at runtime
+uintptr_t GetMaxLowAddressSpaceShift([[maybe_unused]] bool use_32gb = false);
+
+// Get address space mask at runtime
+uintptr_t GetMaxLowAddressSpaceMask([[maybe_unused]] bool use_32gb = false);
 
 #ifdef __linux__
 static constexpr bool kMadviseZeroes = true;
@@ -154,7 +153,8 @@ class MemMap {
                              bool reuse,
                              /*inout*/MemMap* reservation,
                              /*out*/std::string* error_msg,
-                             bool use_debug_name = true);
+                             bool use_debug_name = true,
+                             bool use_32gb = false);
 
   // Request an aligned anonymous region, where the alignment must be higher
   // than the runtime gPageSize. We can't directly ask for a MAP_SHARED
@@ -172,7 +172,8 @@ class MemMap {
                              size_t byte_count,
                              int prot,
                              bool low_4gb,
-                             /*out*/std::string* error_msg) {
+                             /*out*/std::string* error_msg,
+                             bool use_32gb = false) {
     return MapAnonymous(name,
                         /*addr=*/ nullptr,
                         byte_count,
@@ -180,14 +181,17 @@ class MemMap {
                         low_4gb,
                         /*reuse=*/ false,
                         /*reservation=*/ nullptr,
-                        error_msg);
+                        error_msg,
+                        /* use_debug_name= */ true,
+                        use_32gb);
   }
   static MemMap MapAnonymous(const char* name,
                              size_t byte_count,
                              int prot,
                              bool low_4gb,
                              MemMap* reservation,
-                             /*out*/std::string* error_msg) {
+                             /*out*/std::string* error_msg,
+                             bool use_32gb = false) {
     return MapAnonymous(name,
                         /*addr=*/ (reservation != nullptr) ? reservation->Begin() : nullptr,
                         byte_count,
@@ -195,7 +199,9 @@ class MemMap {
                         low_4gb,
                         /*reuse=*/ false,
                         reservation,
-                        error_msg);
+                        error_msg,
+                        /* use_debug_name= */ true,
+                        use_32gb);
   }
 
   // Create placeholder for a region allocated by direct call to mmap.
@@ -215,7 +221,8 @@ class MemMap {
                         off_t start,
                         bool low_4gb,
                         const char* filename,
-                        std::string* error_msg) {
+                        std::string* error_msg,
+                        bool use_32gb = false) {
     return MapFileAtAddress(nullptr,
                             byte_count,
                             prot,
@@ -226,7 +233,8 @@ class MemMap {
                             filename,
                             /*reuse=*/ false,
                             /*reservation=*/ nullptr,
-                            error_msg);
+                            error_msg,
+                            use_32gb);
   }
 
   static MemMap MapFile(size_t byte_count,
@@ -237,7 +245,8 @@ class MemMap {
                         bool low_4gb,
                         const char* filename,
                         bool reuse,
-                        std::string* error_msg) {
+                        std::string* error_msg,
+                        bool use_32gb = false) {
     return MapFileAtAddress(nullptr,
                             byte_count,
                             prot,
@@ -248,7 +257,8 @@ class MemMap {
                             filename,
                             reuse,
                             /*reservation=*/ nullptr,
-                            error_msg);
+                            error_msg,
+                            use_32gb);
   }
 
   // Map part of a file, taking care of non-page aligned offsets. The "start" offset is absolute,
@@ -273,7 +283,8 @@ class MemMap {
                                  const char* filename,
                                  bool reuse,
                                  /*inout*/MemMap* reservation,
-                                 /*out*/std::string* error_msg);
+                                 /*out*/std::string* error_msg,
+                                 bool use_32gb = false);
 
   const std::string& GetName() const {
     return name_;
@@ -424,13 +435,22 @@ class MemMap {
                            int flags,
                            int fd,
                            off_t offset,
-                           bool low_4gb)
+                           bool low_4gb,
+                           bool use_32gb = false)
       REQUIRES(!MemMap::mem_maps_lock_);
   static void* MapInternalArtLow4GBAllocator(size_t length,
                                              int prot,
                                              int flags,
                                              int fd,
                                              off_t offset)
+      REQUIRES(!MemMap::mem_maps_lock_);
+  
+  // 32GB address space allocator for heap memory mapping
+  static void* MapInternalArt32GBAllocator(size_t length,
+                                           int prot,
+                                           int flags,
+                                           int fd,
+                                           off_t offset)
       REQUIRES(!MemMap::mem_maps_lock_);
 
   // Release memory owned by a reservation mapping.
@@ -475,6 +495,14 @@ class MemMap {
                                int flags,
                                int fd,
                                off_t offset);
+  
+  // Try to map memory in 32GB address space
+  static void* TryMemMap32GB(void* ptr,
+                             size_t page_aligned_byte_count,
+                             int prot,
+                             int flags,
+                             int fd,
+                             off_t offset);
 #endif
 
   static void TargetMMapInit();
