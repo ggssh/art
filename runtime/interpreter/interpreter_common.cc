@@ -1147,9 +1147,6 @@ static inline void AssignRegister(ShadowFrame* new_shadow_frame, const ShadowFra
   bool is_reference = false;
   
   if (gUse32GBHeapShiftCompression) {
-    // if (gYYZDebug) {
-    //   LOG(INFO) << "YYZ AssignRegister(gUse32GBHeapShiftCompression=true)";
-    // }
     // When 32GB heap shift compression is enabled, vregs_ stores compressed values (ptr >> 3),
     // so we need to compare with the compressed value of the pointer, not the uncompressed pointer value.
     if (o != nullptr) {
@@ -1161,9 +1158,6 @@ static inline void AssignRegister(ShadowFrame* new_shadow_frame, const ShadowFra
       is_reference = (src_value == 0);
     }
   } else {
-    // if (gYYZDebug) {
-    //   LOG(INFO) << "YYZ AssignRegister(gUse32GBHeapShiftCompression=false)";
-    // }
     // Original logic: compare with uncompressed pointer value (works for 4GB limit)
     is_reference = (src_value == reinterpret_cast32<uint32_t>(o.Ptr()));
   }

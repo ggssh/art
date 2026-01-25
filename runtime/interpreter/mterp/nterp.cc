@@ -501,16 +501,10 @@ static ArtField* FindFieldFast(ArtMethod* caller,
     mirror::Object* obj = nullptr;
     uint32_t obj_vreg_value = registers[inst->VRegB_22c()];
     if (gUse32GBHeapShiftCompression) {
-      // if (gYYZDebug) {
-      //   LOG(INFO) << "YYZ FindFieldFast(gUse32GBHeapShiftCompression=true)";
-      // }
       // In 32GB compression mode, registers store compressed values (ptr >> 3),
       // so we need to decompress before using as a pointer.
       obj = mirror::PtrCompression<false, mirror::Object>::Decompress(obj_vreg_value);
     } else {
-      // if (gYYZDebug) {
-      //   LOG(INFO) << "YYZ FindFieldFast(gUse32GBHeapShiftCompression=false)";
-      // }
       // Original logic: registers store uncompressed pointer values (4GB limit)
       obj = reinterpret_cast32<mirror::Object*>(obj_vreg_value);
     }

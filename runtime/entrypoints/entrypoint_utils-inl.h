@@ -519,7 +519,6 @@ ArtMethod* FindMethodToCall(Thread* self,
                             bool only_lookup_tls_cache,
                             /*out*/ bool* string_init)
     REQUIRES_SHARED(Locks::mutator_lock_) {
-  // LOG(INFO) << "YYZ FindMethodToCall";
   PointerSize pointer_size = Runtime::Current()->GetClassLinker()->GetImagePointerSize();
 
   // Try to find the method in thread-local cache.
