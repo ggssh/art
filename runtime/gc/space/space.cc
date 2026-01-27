@@ -19,10 +19,12 @@
 #include <android-base/logging.h>
 
 #include "base/macros.h"
+#include "base/mem_map.h"
 #include "gc/accounting/heap_bitmap.h"
 #include "gc/accounting/space_bitmap-inl.h"
 #include "gc/heap.h"
 #include "runtime.h"
+#include "runtime_globals.h"
 #include "thread-current-inl.h"
 
 namespace art HIDDEN {
@@ -80,7 +82,16 @@ DiscontinuousSpace::DiscontinuousSpace(const std::string& name,
                                        GcRetentionPolicy gc_retention_policy) :
     Space(name, gc_retention_policy) {
   // TODO: Fix this if we ever support objects not in the low 32 bit.
-  const size_t capacity = static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+  // const size_t capacity = static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+  
+  // In 32GB heap mode, large objects can be allocated in 32GB address space,
+  // so we need a larger bitmap capacity. Otherwise, use the 32-bit limit.
+  size_t capacity;
+  if (gUse32GBHeapShiftCompression) {
+    capacity = GetMaxLowAddressSpace(true);  // 32GB
+  } else {
+    capacity = static_cast<size_t>(std::numeric_limits<uint32_t>::max());  // 4GB
+  }
   live_bitmap_ = accounting::LargeObjectBitmap::Create("large live objects", nullptr, capacity);
   CHECK(live_bitmap_.IsValid());
   mark_bitmap_ = accounting::LargeObjectBitmap::Create("large marked objects", nullptr, capacity);

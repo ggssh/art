@@ -23,6 +23,7 @@
 
 #include "art_field-inl.h"
 #include "base/mem_map.h"
+#include "base/utils.h"
 #include "dex/dex_file-inl.h"
 #include "mirror/class-inl.h"
 #include "mirror/object-inl.h"
@@ -43,7 +44,8 @@ size_t SpaceBitmap<kAlignment>::ComputeBitmapSize(uint64_t capacity) {
   const uint64_t kBytesCoveredPerWord = kAlignment * kBitsPerIntPtrT;
   // Calculate the number of words required to cover a space (heap)
   // having a size of `capacity` bytes.
-  return (RoundUp(capacity, kBytesCoveredPerWord) / kBytesCoveredPerWord) * sizeof(intptr_t);
+  const size_t bitmap_size = (RoundUp(capacity, kBytesCoveredPerWord) / kBytesCoveredPerWord) * sizeof(intptr_t);
+  return bitmap_size;
 }
 
 template<size_t kAlignment>

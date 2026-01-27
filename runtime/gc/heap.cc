@@ -449,7 +449,16 @@ Heap::Heap(size_t initial_size,
       LOG(INFO) << "32GB heap mode enabled: adjusting capacity from " 
                 << PrettySize(capacity_) << " to " << PrettySize(target_capacity);
       capacity_ = target_capacity;
+      
+      // Update growth_limit_ to match the new capacity
+      growth_limit_ = capacity_;
+      LOG(INFO) << "32GB heap mode: adjusting growth_limit_ to " << PrettySize(growth_limit_);
     }
+
+    LOG(INFO) << "After capacity adjustment, capacity_ = " 
+              << PrettySize(capacity_) << " (" << capacity_ << " bytes)"
+              << ", growth_limit_ = " << PrettySize(growth_limit_) 
+              << " (" << growth_limit_ << " bytes)";
   }
   
   if (gUseUserfaultfd) {
@@ -669,8 +678,9 @@ Heap::Heap(size_t initial_size,
   if (foreground_collector_type_ == kCollectorTypeCC) {
     CHECK(separate_non_moving_space);
     // Reserve twice the capacity, to allow evacuating every region for explicit GCs.
+    const size_t requested_capacity = capacity_ * 2;
     MemMap region_space_mem_map =
-        space::RegionSpace::CreateMemMap(kRegionSpaceName, capacity_ * 2, request_begin);
+        space::RegionSpace::CreateMemMap(kRegionSpaceName, requested_capacity, request_begin);
     CHECK(region_space_mem_map.IsValid()) << "No region space mem map";
     region_space_ = space::RegionSpace::Create(
         kRegionSpaceName, std::move(region_space_mem_map), use_generational_gc_);
