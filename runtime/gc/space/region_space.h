@@ -24,6 +24,7 @@
 
 #include <functional>
 #include <map>
+#include <unordered_map>
 
 namespace art HIDDEN {
 namespace gc {
@@ -46,6 +47,8 @@ static constexpr bool kCyclicRegionAllocation = kIsDebugBuild;
 // A space that consists of equal-sized regions.
 class RegionSpace final : public ContinuousMemMapAllocSpace {
  public:
+  class Region;  // Forward declaration for GetRegionForObject.
+
   using WalkCallback = void (*)(void *start, void *end, size_t num_bytes, void* callback_arg);
 
   enum EvacMode {
@@ -297,6 +300,15 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
     return r->Type();
   }
 
+  // Return the region containing `ref`, or nullptr if `ref` is not in this space.
+  // Used by the concurrent copying collector for 32GB forwarding table lookups.
+  Region* GetRegionForObject(mirror::Object* ref) {
+    if (!HasAddress(ref)) {
+      return nullptr;
+    }
+    return RefToRegionUnlocked(ref);
+  }
+
   // Zero live bytes for a large object, used by young gen CC for marking newly allocated large
   // objects.
   void ZeroLiveBytesForLargeObject(mirror::Object* obj) REQUIRES_SHARED(Locks::mutator_lock_);
@@ -390,6 +402,8 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
  private:
   RegionSpace(const std::string& name, MemMap&& mem_map, bool use_generational_cc);
 
+ public:
+  // Nested class must be public so that GetRegionForObject() callers can use Region*.
   class Region {
    public:
     Region()
@@ -419,6 +433,14 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
       is_newly_allocated_ = false;
       is_a_tlab_ = false;
       thread_ = nullptr;
+      if (gUse32GBHeapShiftCompression) {
+        forwarding_table_lock_ =
+            std::make_unique<Mutex>("Region forwarding table", kDefaultMutexLevel);
+        forwarding_table_.reset();
+      } else {
+        forwarding_table_lock_.reset();
+        forwarding_table_.reset();
+      }
       DCHECK_LT(begin, end);
       DCHECK_EQ(static_cast<size_t>(end - begin), kRegionSize);
     }
@@ -601,6 +623,11 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
       return begin_ <= reinterpret_cast<uint8_t*>(ref) && reinterpret_cast<uint8_t*>(ref) < end_;
     }
 
+    // 32GB mode: get/set forwarding from per-region table. Otherwise no-op / return nullptr.
+    mirror::Object* GetForwardingAddress(mirror::Object* from_ref) const;
+    void SetForwardingAddress(mirror::Object* from_ref, mirror::Object* to_ref);
+    void ClearForwardingTable();
+
     void Dump(std::ostream& os) const;
 
     void RecordThreadLocalAllocations(size_t num_objects, size_t num_bytes) {
@@ -642,9 +669,15 @@ class RegionSpace final : public ContinuousMemMapAllocSpace {
     RegionState state_;                 // The region state (see RegionState).
     RegionType type_;                   // The region type (see RegionType).
 
+    // Only used when gUse32GBHeapShiftCompression. Maps offset-in-region to compressed to-space address.
+    // Access only while holding forwarding_table_lock_ (when non-null).
+    std::unique_ptr<std::unordered_map<uint32_t, uint32_t>> forwarding_table_;
+    std::unique_ptr<Mutex> forwarding_table_lock_;
+
     friend class RegionSpace;
   };
 
+ private:
   template<bool kToSpaceOnly, typename Visitor>
   ALWAYS_INLINE void WalkInternal(Visitor&& visitor) NO_THREAD_SAFETY_ANALYSIS;
 

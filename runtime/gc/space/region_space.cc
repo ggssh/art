@@ -19,7 +19,11 @@
 #include "bump_pointer_space.h"
 #include "base/dumpable.h"
 #include "base/logging.h"
+#include "base/locks.h"
 #include "gc/accounting/read_barrier_table.h"
+#include "gc/space/region_space.h"
+#include "gc/space/region_space-inl.h"
+#include "mirror/object_reference.h"
 #include "mirror/class-inl.h"
 #include "mirror/object-inl.h"
 #include "runtime_globals.h"
@@ -1034,6 +1038,54 @@ void RegionSpace::Region::Clear(bool zero_and_release_pages) {
   is_newly_allocated_ = false;
   is_a_tlab_ = false;
   thread_ = nullptr;
+  if (gUse32GBHeapShiftCompression) {
+    ClearForwardingTable();
+  }
+}
+
+void RegionSpace::Region::ClearForwardingTable() NO_THREAD_SAFETY_ANALYSIS {
+  if (forwarding_table_lock_ != nullptr) {
+    MutexLock mu(Thread::Current(), *forwarding_table_lock_);
+    forwarding_table_.reset();
+  } else {
+    forwarding_table_.reset();
+  }
+}
+
+mirror::Object* RegionSpace::Region::GetForwardingAddress(mirror::Object* from_ref) const
+    NO_THREAD_SAFETY_ANALYSIS {
+  CHECK(gUse32GBHeapShiftCompression) << "forwarding table only used in 32GB mode";
+  if (!gUse32GBHeapShiftCompression || forwarding_table_lock_ == nullptr ||
+      forwarding_table_ == nullptr) {
+    return nullptr;
+  }
+  MutexLock mu(Thread::Current(), *forwarding_table_lock_);
+  uintptr_t offset = reinterpret_cast<uintptr_t>(from_ref) - reinterpret_cast<uintptr_t>(begin_);
+  CHECK_LT(offset, static_cast<uintptr_t>(kRegionSize));
+  auto it = forwarding_table_->find(static_cast<uint32_t>(offset));
+  if (it == forwarding_table_->end()) {
+    return nullptr;
+  }
+  uint32_t compressed = it->second;
+  return reinterpret_cast<mirror::Object*>(static_cast<uintptr_t>(compressed)
+                                          << kObjectAlignmentShift);
+}
+
+void RegionSpace::Region::SetForwardingAddress(mirror::Object* from_ref, mirror::Object* to_ref)
+    NO_THREAD_SAFETY_ANALYSIS {
+  DCHECK(gUse32GBHeapShiftCompression) << "forwarding table only used in 32GB mode";
+  if (!gUse32GBHeapShiftCompression || forwarding_table_lock_ == nullptr) {
+    return;
+  }
+  MutexLock mu(Thread::Current(), *forwarding_table_lock_);
+  if (forwarding_table_ == nullptr) {
+    forwarding_table_ = std::make_unique<std::unordered_map<uint32_t, uint32_t>>();
+  }
+  uintptr_t offset = reinterpret_cast<uintptr_t>(from_ref) - reinterpret_cast<uintptr_t>(begin_);
+  CHECK_LT(offset, static_cast<uintptr_t>(kRegionSize));
+  uint32_t compressed = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(to_ref)
+                                              >> kObjectAlignmentShift);
+  (*forwarding_table_)[static_cast<uint32_t>(offset)] = compressed;
 }
 
 void RegionSpace::TraceHeapSize() {

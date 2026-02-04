@@ -25,6 +25,7 @@
 #include "base/bit_utils.h"
 #include "base/macros.h"
 #include "read_barrier.h"
+#include "runtime_globals.h"
 
 namespace art HIDDEN {
 namespace mirror {
@@ -152,6 +153,11 @@ class LockWord {
   static LockWord FromForwardingAddress(size_t target) {
     DCHECK_ALIGNED(target, (1 << kStateSize));
     return LockWord((target >> kForwardingAddressShift) | kStateForwardingAddressShifted);
+  }
+
+  // For 32GB heap: LockWord only marks "forwarded"; actual address is in region's forwarding table.
+  static LockWord FromForwardingAddressSentinel() {
+    return LockWord(kStateForwardingAddressShifted);
   }
 
   static LockWord FromHashCode(uint32_t hash_code, uint32_t gc_state) {

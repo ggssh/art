@@ -20,6 +20,7 @@
 #include "base/macros.h"
 #include "garbage_collector.h"
 #include "gc/accounting/space_bitmap.h"
+#include "gc/space/space.h"
 #include "immune_spaces.h"
 #include "offsets.h"
 
@@ -152,7 +153,7 @@ class ConcurrentCopying : public GarbageCollector {
   void RevokeThreadLocalMarkStack(Thread* thread) REQUIRES(!mark_stack_lock_);
 
   // Blindly return the forwarding pointer from the lockword, or null if there is none.
-  static mirror::Object* GetFwdPtrUnchecked(mirror::Object* from_ref)
+  static EXPORT mirror::Object* GetFwdPtrUnchecked(mirror::Object* from_ref)
       REQUIRES_SHARED(Locks::mutator_lock_);
 
   // If marked, return the to-space object, otherwise null.

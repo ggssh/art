@@ -224,16 +224,6 @@ inline mirror::Object* ConcurrentCopying::MarkFromReadBarrier(mirror::Object* fr
   return ret;
 }
 
-inline mirror::Object* ConcurrentCopying::GetFwdPtrUnchecked(mirror::Object* from_ref) {
-  LockWord lw = from_ref->GetLockWord(false);
-  if (lw.GetState() == LockWord::kForwardingAddress) {
-    mirror::Object* fwd_ptr = reinterpret_cast<mirror::Object*>(lw.ForwardingAddress());
-    DCHECK(fwd_ptr != nullptr);
-    return fwd_ptr;
-  } else {
-    return nullptr;
-  }
-}
 
 inline mirror::Object* ConcurrentCopying::GetFwdPtr(mirror::Object* from_ref) {
   DCHECK(region_space_->IsInFromSpace(from_ref));

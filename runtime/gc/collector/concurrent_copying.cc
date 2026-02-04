@@ -16,6 +16,7 @@
 
 #include "concurrent_copying.h"
 
+#include "android-base/logging.h"
 #include "art_field-inl.h"
 #include "barrier.h"
 #include "base/file_utils.h"
@@ -42,6 +43,7 @@
 #include "mirror/object-refvisitor-inl.h"
 #include "mirror/object_reference.h"
 #include "oat/image-inl.h"
+#include "runtime_globals.h"
 #include "scoped_thread_state_change-inl.h"
 #include "thread-inl.h"
 #include "thread_list.h"
@@ -2724,7 +2726,7 @@ void ConcurrentCopying::ReclaimPhase() {
     // pad to a larger size.
     int64_t freed_bytes = (int64_t)cleared_bytes - (int64_t)to_bytes;
     uint64_t freed_objects = cleared_objects - to_objects;
-    if (kVerboseMode) {
+    if (gUse32GBHeapShiftCompression || kVerboseMode) {
       LOG(INFO) << "RecordFree:"
                 << " from_bytes=" << from_bytes
                 << " unevac_from_bytes=" << unevac_from_bytes
@@ -2732,7 +2734,12 @@ void ConcurrentCopying::ReclaimPhase() {
                 << " freed_bytes=" << freed_bytes
                 << " from_space size=" << region_space_->FromSpaceSize()
                 << " unevac_from_space size=" << region_space_->UnevacFromSpaceSize()
-                << " to_space size=" << region_space_->ToSpaceSize();
+                << " to_space size=" << region_space_->ToSpaceSize()
+                << " large_object_space size=" << heap_->GetLargeObjectsSpace()->Size()
+                << " non_moving_space size=" << heap_->non_moving_space_->Size()
+                << " region_space size=" << region_space_->GetBytesAllocated()
+                << " non_moving_space size=" << heap_->non_moving_space_->GetBytesAllocated()
+                << " large_object_space size=" << heap_->GetLargeObjectsSpace()->GetBytesAllocated();
       LOG(INFO) << "(before) num_bytes_allocated="
                 << heap_->num_bytes_allocated_.load();
     }
@@ -3471,7 +3478,12 @@ mirror::Object* ConcurrentCopying::Copy(Thread* const self,
 
       // Get the winner's forward ptr.
       mirror::Object* lost_fwd_ptr = to_ref;
-      to_ref = reinterpret_cast<mirror::Object*>(old_lock_word.ForwardingAddress());
+      if (gUse32GBHeapShiftCompression) {
+        to_ref = GetFwdPtrUnchecked(from_ref);
+        CHECK(to_ref != nullptr);
+      } else {
+        to_ref = reinterpret_cast<mirror::Object*>(old_lock_word.ForwardingAddress());
+      }
       CHECK(to_ref != nullptr);
       CHECK_NE(to_ref, lost_fwd_ptr);
       CHECK(region_space_->IsInToSpace(to_ref) || heap_->non_moving_space_->HasAddress(to_ref))
@@ -3487,7 +3499,9 @@ mirror::Object* ConcurrentCopying::Copy(Thread* const self,
       to_ref->SetReadBarrierState(ReadBarrier::GrayState());
     }
 
-    LockWord new_lock_word = LockWord::FromForwardingAddress(reinterpret_cast<size_t>(to_ref));
+    LockWord new_lock_word = gUse32GBHeapShiftCompression
+        ? LockWord::FromForwardingAddressSentinel()
+        : LockWord::FromForwardingAddress(reinterpret_cast<size_t>(to_ref));
 
     // Try to atomically write the fwd ptr. Make sure that the copied object is visible to any
     // readers of the fwd pointer.
@@ -3496,6 +3510,12 @@ mirror::Object* ConcurrentCopying::Copy(Thread* const self,
                                          CASMode::kWeak,
                                          std::memory_order_release);
     if (LIKELY(success)) {
+      // The CAS succeeded. Only the winner writes to the forwarding table (32GB mode).
+      if (gUse32GBHeapShiftCompression) {
+        auto* region = region_space_->GetRegionForObject(from_ref);
+        CHECK(region != nullptr);
+        region->SetForwardingAddress(from_ref, to_ref);
+      }
       // The CAS succeeded.
       DCHECK(thread_running_gc_ != nullptr);
       if (LIKELY(self == thread_running_gc_)) {
@@ -3831,6 +3851,42 @@ void ConcurrentCopying::DumpPerformanceInfo(std::ostream& os) {
      << ")\n";
   if (!young_gen_) {
     os << "Total madvise time " << PrettyDuration(region_space_->GetMadviseTime()) << "\n";
+  }
+}
+
+mirror::Object* ConcurrentCopying::GetFwdPtrUnchecked(mirror::Object* from_ref) {
+  LockWord lw = from_ref->GetLockWord(false);
+  // if (lw.GetState() == LockWord::kForwardingAddress) {
+  //   mirror::Object* fwd_ptr = reinterpret_cast<mirror::Object*>(lw.ForwardingAddress());
+  //   DCHECK(fwd_ptr != nullptr);
+  //   return fwd_ptr;
+  // } else {
+  //   return nullptr;
+  // }
+  if (lw.GetState() != LockWord::kForwardingAddress) {
+    return nullptr;
+  }
+  // When false, path below is identical to original (LockWord only, no table).
+  if (gUse32GBHeapShiftCompression) {
+    auto region_space = Runtime::Current()->GetHeap()->GetRegionSpace();
+    CHECK(region_space != nullptr);
+    auto* region = region_space->GetRegionForObject(from_ref);
+    CHECK(region != nullptr);
+    // Winner inserts after CAS; keep calling until table has the entry (result cannot stay null).
+    mirror::Object* fwd_ptr = nullptr;
+    while ((fwd_ptr = region->GetForwardingAddress(from_ref)) == nullptr) {
+      // if (--retries <= 0) {
+      //   LOG(FATAL) << "GetForwardingAddress returned null after " << kMaxForwardingTableRetries
+      //              << " retries for " << from_ref;
+      //   UNREACHABLE();
+      // }
+      sched_yield();
+    }
+    return fwd_ptr;
+  } else {
+    mirror::Object* fwd_ptr = reinterpret_cast<mirror::Object*>(lw.ForwardingAddress());
+    DCHECK(fwd_ptr != nullptr);
+    return fwd_ptr;
   }
 }
 
