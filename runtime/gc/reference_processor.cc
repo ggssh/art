@@ -120,7 +120,7 @@ ObjPtr<mirror::Object> ReferenceProcessor::GetReferent(Thread* self,
     DCHECK(collector_ != nullptr);
     const bool other_read_barrier = !kUseBakerReadBarrier && gUseReadBarrier;
     if (UNLIKELY(reference->IsFinalizerReferenceInstance()
-                 || rp_state_ == RpState::kStarting /* too early to determine mark state */
+                //  || rp_state_ == RpState::kStarting /* too early to determine mark state */
                  || (other_read_barrier && reference->IsPhantomReferenceInstance()))) {
       // Odd cases in which it doesn't hurt to just wait, or the wait is likely to be very brief.
 
@@ -140,6 +140,20 @@ ObjPtr<mirror::Object> ReferenceProcessor::GetReferent(Thread* self,
     if (rp_state_ == RpState::kInitClearingDone) {
       // Reachable references have their final referent values.
       break;
+    }
+
+    if (rp_state_ == RpState::kStarting) {
+      referent = reference->GetReferent<kWithoutReadBarrier>();
+      auto is_marked = collector_->IsMarked(referent.Ptr());
+      if (is_marked) {
+        // LOG(INFO) << "YYZ GetReferent: referent is marked"; 
+        return is_marked;
+      } else {
+        // LOG(INFO) << "YYZ GetReferent: referent is not marked"; 
+        self->CheckEmptyCheckpointFromWeakRefAccess(Locks::reference_processor_lock_);
+        condition_.WaitHoldingLocks(self);
+        continue;
+      }
     }
     // Although reference processing is not done, we can always predict the correct return value
     // based on the current mark state. No additional marking from finalizers has been done, since
