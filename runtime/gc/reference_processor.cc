@@ -117,6 +117,7 @@ ObjPtr<mirror::Object> ReferenceProcessor::GetReferent(Thread* self,
   };
 
   MutexLock mu(self, *Locks::reference_processor_lock_);
+  auto stt = NanoTime();
   // Keeping reference_processor_lock_ blocks the broadcast when we try to reenable the fast path.
   while (slow_path_required()) {
     DCHECK(collector_ != nullptr);
@@ -148,7 +149,8 @@ ObjPtr<mirror::Object> ReferenceProcessor::GetReferent(Thread* self,
       referent = reference->GetReferent<kWithoutReadBarrier>();
       auto is_marked = collector_->IsMarked(referent.Ptr());
       if (is_marked) {
-        // LOG(INFO) << "YYZ GetReferent: referent is marked"; 
+        auto ett = NanoTime();
+        LOG(INFO) << "YYZ GetReferent: referent is marked, time: " << ett - stt << " ns";
         return is_marked;
       } else {
         // LOG(INFO) << "YYZ GetReferent: referent is not marked"; 

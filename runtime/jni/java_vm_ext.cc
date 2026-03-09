@@ -955,6 +955,10 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectR
 
   // shengkai
   // disable weak ref access when cc clearing mark stack
+
+  // record start time
+  
+  auto stt = NanoTime();
   gc::Heap* heap = Runtime::Current()->GetHeap();
   if (heap->CurrentCollectorType() == gc::kCollectorTypeCC) {
     WaitForWeakGlobalsProcessPrepare(self);
@@ -962,7 +966,10 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectR
       WaitForFinalizerProcess(self);
     }
     // Caution! .Get(ref) would gray obj during mark!
-    return weak_globals_.GetWeak(ref);
+    auto result = weak_globals_.GetWeak(ref);
+    auto ett = NanoTime();
+    LOG(INFO) << "YYZ: DecodeWeakGlobal time: " << ett - stt << " ns";
+    return result;
   } else {
     WaitForWeakGlobalsAccess(self);
     return weak_globals_.Get(ref);
