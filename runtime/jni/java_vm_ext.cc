@@ -883,12 +883,16 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectR
   if (kDebugLocking) {
     Locks::jni_weak_globals_lock_->AssertHeld(self);
   }
+  auto stt = NanoTime();
   // TODO: Handle the already null case without waiting.
   // TODO: Otherwise we should just wait for kInitMarkingDone, and track which weak globals were
   // marked at that point. We would only need one mark bit per entry in the weak_globals_ table,
   // and a quick pass over that early on during reference processing.
   WaitForWeakGlobalsAccess(self);
-  return weak_globals_.Get(ref);
+  auto result = weak_globals_.Get(ref);
+  auto ett = NanoTime();
+  LOG(INFO) << "YYZ DecodeWeakGlobalLocked time: " << ett - stt << " ns";
+  return result;
 }
 
 ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalAsStrong(IndirectRef ref) {
